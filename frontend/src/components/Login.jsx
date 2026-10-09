@@ -73,9 +73,6 @@ export default function Login({ onLoggedIn }) {
         >
           {busy ? "Signing in..." : "Sign in"}
         </button>
-        <div className="text-xs text-slate-500 text-center">
-          Test: admin@demo.com / Test123!
-        </div>
       </form>
     </div>
   );

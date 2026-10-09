@@ -7,6 +7,7 @@ import Login from "./components/Login";
 const AUTH_MODE = import.meta.env.VITE_AUTH_MODE || "local";
 
 export default function App() {
+  // All hooks must be declared at the top unconditionally (Rules of Hooks)
   const [authenticated, setAuthenticated] = useState(false);
   const [tenant, setTenant] = useState("boc-tenant-01");
   const [pending, setPending] = useState(() => {
@@ -24,6 +25,7 @@ export default function App() {
       return null;
     }
   });
+  const [resolvedAction, setResolvedAction] = useState(null);
 
   useEffect(() => {
     if (AUTH_MODE === "cognito") {
@@ -67,6 +69,23 @@ export default function App() {
     }
   };
 
+  const handleApprovalResolved = (res) => {
+    updatePending(null);
+    if (res?.execution_id) {
+      updateLastExecution(res.execution_id);
+    }
+    setResolvedAction(res);
+  };
+
+  const logout = () => {
+    localStorage.removeItem("id_token");
+    localStorage.removeItem("id_token_exp");
+    sessionStorage.clear();
+    setAuthenticated(false);
+    window.location.reload();
+  };
+
+  // Conditional render only AFTER all hooks are declared
   if (AUTH_MODE === "cognito" && !authenticated) {
     return (
       <Login
@@ -77,24 +96,6 @@ export default function App() {
       />
     );
   }
-
-  const logout = () => {
-    localStorage.removeItem("id_token");
-    localStorage.removeItem("id_token_exp");
-    sessionStorage.clear();
-    setAuthenticated(false);
-    window.location.reload();
-  };
-
-  const [resolvedAction, setResolvedAction] = useState(null);
-
-  const handleApprovalResolved = (res) => {
-    updatePending(null);
-    if (res?.execution_id) {
-      updateLastExecution(res.execution_id);
-    }
-    setResolvedAction(res);
-  };
 
   return (
     <div className="h-screen flex flex-col bg-slate-950">
