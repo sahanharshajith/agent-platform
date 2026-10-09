@@ -19,3 +19,4 @@ def _startup():
     init_db()
 
 app.include_router(router)
+

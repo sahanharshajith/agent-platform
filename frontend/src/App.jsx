@@ -1,62 +1,77 @@
-// src/App.jsx
-import { useState } from "react";
-import ChatWindow from "./components/ChatWindow";
-import ApprovalPanel from "./components/ApprovalPanel";
-import AuditViewer from "./components/AuditViewer";
+import { Component, useEffect, useState } from 'react';
+import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { AnimatePresence, MotionConfig, motion } from 'framer-motion';
+import { ArrowLeft, CircleAlert, ShieldCheck } from 'lucide-react';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { DataProvider } from './context/DataContext';
+import { UIProvider } from './context/UIContext';
+import Navbar from './components/Navbar';
+import Sidebar from './components/Sidebar';
+import ActivityDrawer from './components/ActivityDrawer';
+import CommandMenu from './components/CommandMenu';
+import HelpDialog from './components/HelpDialog';
+import { EmptyState, Modal } from './components/Primitives';
+import LoginPage from './pages/LoginPage';
+import OverviewPage from './pages/OverviewPage';
+import LiveActivityPage from './pages/LiveActivityPage';
+import AuditPage from './pages/AuditPage';
+import UsagePage from './pages/UsagePage';
+import SettingsPage from './pages/SettingsPage';
+import { navigation } from './lib/navigation';
 
-export default function App() {
-  const [tenant, setTenant] = useState(localStorage.getItem("tenant_id") || "tenantA");
-  const [pending, setPending] = useState(null);
-  const [lastExecution, setLastExecution] = useState(null);
+class AppErrorBoundary extends Component {
+  state = { failed: false };
+  static getDerivedStateFromError() { return { failed: true }; }
+  render() {
+    if (this.state.failed) return <div className="fatal-error"><CircleAlert size={30} /><h1>Let's get you back on track.</h1><p>The console encountered an unexpected error. Your backend data has not been changed.</p><button className="button primary" onClick={() => window.location.reload()}>Reload workspace</button></div>;
+    return this.props.children;
+  }
+}
 
-  const switchTenant = (t) => {
-    setTenant(t);
-    localStorage.setItem("tenant_id", t);
-  };
+function DashboardShell() {
+  const { isDemo } = useAuth();
+  const location = useLocation();
+  const [selected, setSelected] = useState(null);
+  const [mobileNav, setMobileNav] = useState(false);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  useEffect(() => {
+    const keyboard = (event) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandOpen((open) => !open); }
+      if (event.key === '/' && !['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName) && !document.activeElement?.isContentEditable) { event.preventDefault(); setCommandOpen(true); }
+    };
+    window.addEventListener('keydown', keyboard);
+    return () => window.removeEventListener('keydown', keyboard);
+  }, []);
+  useEffect(() => {
+    const title = navigation.find((item) => item.path === location.pathname)?.label || 'Workspace';
+    document.title = `${title} | AgentFlow`;
+    setSelected(null);
+    setMobileNav(false);
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+  return <div className="app-shell">
+    <a className="skip-link" href="#main-content">Skip to content</a>
+    <Navbar onMenu={() => setMobileNav(true)} onSearch={() => setCommandOpen(true)} />
+    <Sidebar onHelp={() => setHelpOpen(true)} />
+    <main id="main-content" className="dashboard-main" tabIndex={-1}>
+      <AnimatePresence mode="wait" initial={false}><motion.div className="page-content" key={location.pathname} initial={{ opacity: 0, y: 7 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -3 }} transition={{ duration: 0.18 }}><Routes location={location}><Route path="/" element={<OverviewPage onSelect={setSelected} />} /><Route path="/activity" element={<LiveActivityPage onSelect={setSelected} />} /><Route path="/audit" element={<AuditPage />} /><Route path="/usage" element={<UsagePage onSelect={setSelected} />} /><Route path="/settings" element={<SettingsPage />} /><Route path="*" element={<EmptyState title="This page took a different path." description="Let's head back to your workspace overview." action={<Link className="button primary" to="/"><ArrowLeft size={16} />Back to overview</Link>} />} /></Routes></motion.div></AnimatePresence>
+      <footer className="app-footer"><span><span className="footer-brand">AgentFlow</span><span className="footer-separator">/</span>{isDemo ? 'Demo workspace. Illustrative data.' : 'Intelligence in motion.'}</span><span><ShieldCheck size={13} />Read-only monitoring<span className="footer-dot" /></span></footer>
+    </main>
+    <ActivityDrawer execution={selected} onClose={() => setSelected(null)} />
+    <CommandMenu open={commandOpen} onClose={() => setCommandOpen(false)} />
+    <HelpDialog open={helpOpen} onClose={() => setHelpOpen(false)} />
+    <Modal open={mobileNav} onClose={() => setMobileNav(false)} title="Your workspace" className="navigation-drawer"><Sidebar mobile onNavigate={() => setMobileNav(false)} onHelp={() => { setMobileNav(false); setHelpOpen(true); }} /></Modal>
+  </div>;
+}
 
-  return (
-    <div className="h-screen flex flex-col bg-slate-950 text-slate-100 antialiased">
-      {/* Header */}
-      <header className="border-b border-slate-800/60 bg-slate-900/70 backdrop-blur-sm px-6 py-3 flex items-center justify-between shadow-lg shadow-black/20">
-        <div className="flex items-center gap-3">
-          <div className="w-2 h-2 rounded-full bg-indigo-500 shadow-lg shadow-indigo-500/50" />
-          <span className="font-semibold tracking-tight text-slate-100">Agent Platform</span>
-          <span className="text-xs font-medium text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full border border-indigo-500/20">
-            MVP
-          </span>
-        </div>
-        <div className="flex items-center gap-4 text-sm">
-          <span className="text-slate-500 text-xs uppercase tracking-wider font-medium">Tenant</span>
-          <select
-            value={tenant}
-            onChange={(e) => switchTenant(e.target.value)}
-            className="bg-slate-800/80 border border-slate-700/50 rounded-lg px-3 py-1.5 text-sm text-slate-200 
-                       focus:outline-none focus:border-indigo-500/60 focus:ring-1 focus:ring-indigo-500/30 
-                       transition-all duration-200 cursor-pointer hover:border-slate-600"
-          >
-            <option value="tenantA">tenantA</option>
-            <option value="tenantB">tenantB</option>
-          </select>
-        </div>
-      </header>
+function ProtectedDashboard() {
+  const { session } = useAuth();
+  const location = useLocation();
+  if (!session) return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
+  return <DataProvider key={`${session.tenant_id}-${session.demo ? 'demo' : 'live'}`}><DashboardShell /></DataProvider>;
+}
 
-      {/* Main layout */}
-      <div className="flex-1 grid grid-cols-3 overflow-hidden">
-        <div className="col-span-2 border-r border-slate-800/60 overflow-hidden bg-slate-900/30">
-          <ChatWindow
-            onPendingApproval={setPending}
-            onExecutionUpdate={(r) => setLastExecution(r.execution_id)}
-          />
-        </div>
-        <div className="grid grid-rows-2 overflow-hidden bg-slate-900/20">
-          <div className="border-b border-slate-800/60 overflow-hidden">
-            <ApprovalPanel pending={pending} onResolved={() => setPending(null)} />
-          </div>
-          <div className="overflow-hidden">
-            <AuditViewer activeExecutionId={lastExecution} />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+export default function AgentFlowApp() {
+  return <AppErrorBoundary><MotionConfig reducedMotion="user" transition={{ duration: 0.2 }}><BrowserRouter><AuthProvider><UIProvider><Routes><Route path="/login" element={<LoginPage />} /><Route path="/*" element={<ProtectedDashboard />} /></Routes></UIProvider></AuthProvider></BrowserRouter></MotionConfig></AppErrorBoundary>;
 }

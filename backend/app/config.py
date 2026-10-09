@@ -19,12 +19,30 @@ class Settings:
     SQS_URL: str = os.getenv("SQS_URL", "")
     SNS_ARN: str = os.getenv("SNS_ARN", "")
 
+    # AWS RDS Relational Database (PostgreSQL)
+    USE_RDS: bool = os.getenv("USE_RDS", "false").lower() in ("true", "1", "yes")
+    RDS_HOST: str = os.getenv("RDS_HOST", "")
+    RDS_PORT: int = int(os.getenv("RDS_PORT", "5432"))
+    RDS_DB_NAME: str = os.getenv("RDS_DB_NAME", "agentflow")
+    RDS_USER: str = os.getenv("RDS_USER", "postgres")
+    RDS_PASSWORD: str = os.getenv("RDS_PASSWORD", "")
+    RDS_SSL_MODE: str = os.getenv("RDS_SSL_MODE", "prefer")
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "")
+
     # LLM Settings
-    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "gemini")
+    LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "bedrock")
     EMBEDDING_PROVIDER: str = os.getenv("EMBEDDING_PROVIDER", "gemini")
 
+    BEDROCK_REGION: str = os.getenv("BEDROCK_REGION", os.getenv("AWS_REGION", "us-east-1"))
+    BEDROCK_CHAT_MODEL: str = os.getenv(
+        "BEDROCK_CHAT_MODEL", "us.anthropic.claude-3-5-haiku-20241022-v1:0"
+    )
+    BEDROCK_EMBEDDING_MODEL: str = os.getenv(
+        "BEDROCK_EMBEDDING_MODEL", "amazon.titan-embed-text-v2:0"
+    )
+
     GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "")
-    GEMINI_CHAT_MODEL: str = os.getenv("GEMINI_CHAT_MODEL", "gemini-3.8-flash")
+    GEMINI_CHAT_MODEL: str = os.getenv("GEMINI_CHAT_MODEL", "gemini-2.5-flash")
     GEMINI_EMBEDDING_MODEL: str = os.getenv("GEMINI_EMBEDDING_MODEL", "gemini-embedding-001")
     EMBEDDING_DIM: int = int(os.getenv("EMBEDDING_DIM", "768"))
 

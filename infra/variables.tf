@@ -51,3 +51,79 @@ variable "test_tenant_id" {
   type        = string
   default     = "boc-tenant-01"
 }
+
+# ─────────────────────────────────────────────────────────────
+# AWS RDS PostgreSQL Variables
+# ─────────────────────────────────────────────────────────────
+variable "vpc_id" {
+  description = "VPC ID where RDS should be provisioned (leave empty for default VPC)"
+  type        = string
+  default     = ""
+}
+
+variable "rds_subnet_ids" {
+  description = "Subnet IDs for RDS subnet group (leave empty to auto-detect subnets in VPC)"
+  type        = list(string)
+  default     = []
+}
+
+variable "rds_db_name" {
+  description = "Database name inside RDS PostgreSQL"
+  type        = string
+  default     = "agentflow"
+}
+
+variable "rds_master_username" {
+  description = "Master username for RDS PostgreSQL"
+  type        = string
+  default     = "postgres"
+}
+
+variable "rds_master_password" {
+  description = "Master password for RDS PostgreSQL"
+  type        = string
+  default     = "AgentFlow2026!SecureRDS"
+  sensitive   = true
+}
+
+variable "rds_instance_class" {
+  description = "DB instance class"
+  type        = string
+  default     = "db.t4g.micro"
+}
+
+variable "rds_allocated_storage" {
+  description = "Initial allocated storage in GB"
+  type        = number
+  default     = 20
+}
+
+variable "rds_engine_version" {
+  description = "PostgreSQL engine version"
+  type        = string
+  default     = "15.7"
+}
+
+variable "rds_publicly_accessible" {
+  description = "Whether the RDS instance is publicly accessible"
+  type        = bool
+  default     = true
+}
+
+variable "rds_allowed_cidr_blocks" {
+  description = "CIDR blocks allowed to access RDS on port 5432"
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "rds_backup_retention_period" {
+  description = "Number of days to retain automated backups"
+  type        = number
+  default     = 7
+}
+
+variable "rds_skip_final_snapshot" {
+  description = "Whether to skip final snapshot when destroying RDS instance"
+  type        = bool
+  default     = true
+}

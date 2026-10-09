@@ -1,10 +1,19 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-theme="dark">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/agents.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Agent Platform</title>
+    <meta name="theme-color" content="#0A0E1A" />
+    <meta name="description" content="AgentFlow is your considered space to monitor autonomous AI agents, understand their decisions, and configure your enterprise workspace." />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;450;500;550;600;650;700;750;800&family=JetBrains+Mono:wght@400;450;500;600&display=swap" rel="stylesheet" />
+    <title>Overview | AgentFlow</title>
+    <script>
+      window.global = window;
+      try{document.documentElement.dataset.theme=localStorage.getItem('agentflow.theme')==='light'?'light':'dark';}catch{}
+    </script>
   </head>
   <body>
     <div id="root"></div>
