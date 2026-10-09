@@ -20,6 +20,8 @@ if settings.USE_RDS:
     get_tenant_session_history = rds_audit.get_tenant_session_history
     create_tenant_consent = rds_audit.create_tenant_consent
     get_tenant_consent = rds_audit.get_tenant_consent
+    bind_tenant_consent = rds_audit.bind_tenant_consent
+    complete_tenant_consent = rds_audit.complete_tenant_consent
     record_tenant_consent_outcome = rds_audit.record_tenant_consent_outcome
     get_overview_stats = rds_audit.get_overview_stats
     get_usage_stats = rds_audit.get_usage_stats
@@ -43,6 +45,12 @@ elif settings.USE_AWS:
     create_tenant_consent = lambda *args, **kwargs: None
     get_tenant_consent = lambda *args, **kwargs: None
     record_tenant_consent_outcome = lambda *args, **kwargs: None
+
+    def bind_tenant_consent(consent_id: str, external_consent_id: str, approved: bool) -> bool:
+        raise RuntimeError("Consent callback binding requires SQLite or PostgreSQL storage.")
+
+    def complete_tenant_consent(*args, **kwargs):
+        raise RuntimeError("Consent completion requires SQLite or PostgreSQL storage.")
 else:
     init_db = local_audit.init_db
     log_event = local_audit.log_event
@@ -58,11 +66,13 @@ else:
     get_usage_stats = local_audit.get_usage_stats
     get_tenant_tools = lambda tenant_id: []
     get_tenant_tool = lambda tenant_id, tool_name: None
-    append_tenant_session = lambda *args, **kwargs: None
-    get_tenant_session_history = lambda *args, **kwargs: []
-    create_tenant_consent = lambda *args, **kwargs: None
-    get_tenant_consent = lambda *args, **kwargs: None
-    record_tenant_consent_outcome = lambda *args, **kwargs: None
+    append_tenant_session = local_audit.append_tenant_session
+    get_tenant_session_history = local_audit.get_tenant_session_history
+    create_tenant_consent = local_audit.create_tenant_consent
+    get_tenant_consent = local_audit.get_tenant_consent
+    bind_tenant_consent = local_audit.bind_tenant_consent
+    complete_tenant_consent = local_audit.complete_tenant_consent
+    record_tenant_consent_outcome = local_audit.record_tenant_consent_outcome
 
 __all__ = [
     "init_db",
@@ -83,5 +93,7 @@ __all__ = [
     "get_tenant_session_history",
     "create_tenant_consent",
     "get_tenant_consent",
+    "bind_tenant_consent",
+    "complete_tenant_consent",
     "record_tenant_consent_outcome",
 ]

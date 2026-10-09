@@ -48,14 +48,25 @@ export function createDemoToken(email = 'admin@demo.com', tenantId = 'boc-tenant
   }
 }
 
+export function isLocalSession(session) {
+  if (session?.auth_mode === 'local') return true;
+  const token = session?.id_token;
+  // Recognize sessions saved before local auth stopped sending synthetic JWTs.
+  return typeof token === 'string' && (
+    token === 'demo-id-token' ||
+    token.split('.')[2] === btoa('agentflow-demo-signature')
+  );
+}
+
 export const demoSession = {
   demo: false,
+  auth_mode: 'local',
   tenant_id: 'boc-tenant-01',
   tenant_name: 'Bank of Commerce',
   domain: 'portal.bankofcommerce.example',
   email: 'admin@demo.com',
   name: 'Workspace Admin',
-  id_token: createDemoToken('admin@demo.com', 'boc-tenant-01'),
+  id_token: '',
   expires_at: Date.now() + 86400000 * 7,
 };
 

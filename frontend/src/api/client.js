@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { configuration, expireSession, readSession, createDemoToken } from '../lib/session';
+import { configuration, expireSession, isLocalSession, readSession } from '../lib/session';
 
 const API_BASE = configuration.apiUrl || 'http://localhost:8000';
 
@@ -15,10 +15,14 @@ client.interceptors.request.use((request) => {
     return request;
   }
   const session = readSession();
-  const token = session?.id_token || createDemoToken();
+  const token = session?.id_token;
   const tenantId = session?.tenant_id || 'boc-tenant-01';
 
-  request.headers.set('Authorization', `Bearer ${token}`);
+  if (token && !isLocalSession(session)) {
+    request.headers.set('Authorization', `Bearer ${token}`);
+  } else {
+    request.headers.delete('Authorization');
+  }
   request.headers.set('X-Tenant-Id', tenantId);
   return request;
 });

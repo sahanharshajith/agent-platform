@@ -155,11 +155,21 @@ The frontend application will be accessible at `http://localhost:5173`.
 
 ## API Reference
 
+### StreamSphere integration
+
+This backend implements StreamSphere's existing JSON `/chat` and `/consent` contract,
+including credential-based tenant authentication, persistent conversation history,
+authoritative account lookups, and customer-approved cancellation/refund callbacks.
+See [StreamSphere setup](backend/deploy/STREAMING_INTEGRATION.md) for the matching
+environment variables in both applications and validation commands. No streaming
+frontend changes or FAISS index are required for this integration.
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/health` | Health check endpoint |
 | `POST` | `/chat` | Send user message to agent loop, execute RAG + policy, or request approval |
 | `POST` | `/approve` | Human-in-the-loop decision endpoint to approve or deny pending executions |
+| `POST` | `/consent` | Resume or decline a customer confirmation using its bound token and session |
 | `GET` | `/audit` | List audit execution history for authenticated tenant |
 | `GET` | `/audit/{execution_id}` | Retrieve complete chronological event trace for a specific execution |
 

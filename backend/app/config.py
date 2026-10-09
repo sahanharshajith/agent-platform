@@ -55,5 +55,12 @@ class Settings:
     AUTH_MODE: str = os.getenv("AUTH_MODE", "local")
     JWT_SECRET: str = os.getenv("JWT_SECRET", "dev-secret-change-me")
 
+    # StreamSphere server-to-server integration. These secrets stay on backends.
+    STREAMING_TENANT_ID: str = os.getenv("STREAMING_TENANT_ID", "streamsphere-prod-01").strip()
+    STREAMING_API_KEY: str = os.getenv("STREAMING_API_KEY", "")
+    STREAMING_BASE_URL: str = os.getenv("STREAMING_BASE_URL", "")
+    STREAMING_TOOL_API_KEY: str = os.getenv("STREAMING_TOOL_API_KEY", "")
+    STREAMING_TOOL_TIMEOUT: float = float(os.getenv("STREAMING_TOOL_TIMEOUT", "15"))
+
 
 settings = Settings()
