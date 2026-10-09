@@ -61,3 +61,24 @@ backend/knowledge_base/vector_store/
 *.tmp
 *.temp
 "@ | Set-Content .gitignore
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+terraform.tfvars
+terraform.tfvars.json
+*.auto.tfvars
+*.auto.tfvars.json
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraformrc
+terraform.rc
+
+# Keep lock file in version control
+!**/.terraform.lock.hcl
