@@ -120,4 +120,4 @@ def get_current_tenant(
     tenant_id = claims.get("custom:tenant_id")
     if not tenant_id:
         raise HTTPException(status_code=401, detail="custom:tenant_id claim missing")
-    return {"tenant_id": tenant_id, "email": claims.get("email", "")}
+    return {"tenant_id": tenant_id, "email": claims.get("email", "")}

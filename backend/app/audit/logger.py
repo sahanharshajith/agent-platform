@@ -48,6 +48,50 @@ def init_db() -> None:
         """)
         conn.execute("CREATE INDEX IF NOT EXISTS idx_events_exec ON audit_events(execution_id)")
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tenant_sessions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                tenant_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                context TEXT NOT NULL DEFAULT '{}',
+                created_at TEXT NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tenant_sessions_lookup
+            ON tenant_sessions(tenant_id, user_id, session_id, created_at, id)
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS tenant_consents (
+                consent_id TEXT PRIMARY KEY,
+                execution_id TEXT NOT NULL,
+                tenant_id TEXT NOT NULL,
+                user_id TEXT NOT NULL,
+                session_id TEXT NOT NULL,
+                consent_token TEXT NOT NULL,
+                action TEXT NOT NULL,
+                tool_name TEXT NOT NULL,
+                tool_args TEXT NOT NULL DEFAULT '{}',
+                details TEXT NOT NULL DEFAULT '{}',
+                approved INTEGER,
+                status TEXT NOT NULL DEFAULT 'pending',
+                cached_reply TEXT,
+                created_at TEXT NOT NULL,
+                executed_at TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tenant_consents_execution
+            ON tenant_consents(execution_id)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_tenant_consents_token
+            ON tenant_consents(consent_token)
+        """)
+
         # Settings table for Admin Console
         conn.execute("""
             CREATE TABLE IF NOT EXISTS tenant_settings (
@@ -759,3 +803,175 @@ def get_usage_stats(tenant_id: str) -> Dict[str, Any]:
             {"model": "Titan Embeddings v2", "tokens": 240000, "cost": 1.45, "color": "#38BDF8"},
         ],
     }
+
+
+def append_tenant_session(
+    tenant_id: str,
+    user_id: str,
+    session_id: str,
+    role: str,
+    content: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Persist a conversation turn scoped to its tenant, user and session."""
+    with _conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO tenant_sessions
+                (tenant_id, user_id, session_id, role, content, context, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (tenant_id, user_id, session_id, role, content,
+             json.dumps(context or {}, default=str), _now()),
+        )
+
+
+def get_tenant_session_history(
+    tenant_id: str,
+    user_id: str,
+    session_id: str,
+    limit: int = 10,
+) -> List[Dict[str, str]]:
+    """Return the most recent turns in chronological order."""
+    with _conn() as conn:
+        rows = conn.execute(
+            """
+            SELECT role, content FROM tenant_sessions
+            WHERE tenant_id = ? AND user_id = ? AND session_id = ?
+            ORDER BY created_at DESC, id DESC
+            LIMIT ?
+            """,
+            (tenant_id, user_id, session_id, max(0, limit)),
+        ).fetchall()
+    return [{"role": row[0], "content": row[1]} for row in reversed(rows)]
+
+
+def create_tenant_consent(
+    consent_id: str,
+    execution_id: str,
+    tenant_id: str,
+    user_id: str,
+    session_id: str,
+    consent_token: str,
+    action: str,
+    tool_name: str,
+    tool_args: Dict[str, Any],
+    details: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Create a pending consent without replacing an existing decision."""
+    with _conn() as conn:
+        conn.execute(
+            """
+            INSERT INTO tenant_consents (
+                consent_id, execution_id, tenant_id, user_id, session_id,
+                consent_token, action, tool_name, tool_args, details, status, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)
+            ON CONFLICT (consent_id) DO NOTHING
+            """,
+            (consent_id, execution_id, tenant_id, user_id, session_id,
+             consent_token, action, tool_name, json.dumps(tool_args or {}, default=str),
+             json.dumps(details or {}, default=str), _now()),
+        )
+
+
+def get_tenant_consent(
+    consent_id: Optional[str] = None,
+    consent_token: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Retrieve a consent by consent id, execution id, or token."""
+    with _conn() as conn:
+        conn.row_factory = sqlite3.Row
+        row = None
+        if consent_id:
+            row = conn.execute(
+                "SELECT * FROM tenant_consents WHERE consent_id = ? OR execution_id = ?",
+                (consent_id, consent_id),
+            ).fetchone()
+        if row is None and consent_token:
+            row = conn.execute(
+                "SELECT * FROM tenant_consents WHERE consent_token = ?", (consent_token,),
+            ).fetchone()
+    if row is None:
+        return None
+    result = dict(row)
+    result["tool_args"] = json.loads(result["tool_args"])
+    result["details"] = json.loads(result["details"])
+    if result["approved"] is not None:
+        result["approved"] = bool(result["approved"])
+    return result
+
+
+def bind_tenant_consent(consent_id: str, external_consent_id: str, approved: bool) -> bool:
+    """Atomically bind a consent to one external callback and decision."""
+    with _conn() as conn:
+        # Reserve the writer before reading so concurrent callbacks cannot both bind.
+        # This transaction finishes before callers contact the remote application.
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT details FROM tenant_consents WHERE consent_id = ?", (consent_id,),
+        ).fetchone()
+        if row is None:
+            return False
+        details = json.loads(row[0])
+        if "external_consent_id" in details or "decision" in details:
+            return (
+                details.get("external_consent_id") == external_consent_id
+                and details.get("decision") is approved
+            )
+        details.update(external_consent_id=external_consent_id, decision=approved)
+        conn.execute(
+            "UPDATE tenant_consents SET details = ? WHERE consent_id = ?",
+            (json.dumps(details, default=str), consent_id),
+        )
+    return True
+
+
+def record_tenant_consent_outcome(
+    consent_id: str,
+    execution_id: str,
+    approved: bool,
+    status: str,
+    cached_reply: str,
+) -> None:
+    """Persist the response for replay while retaining the callback binding."""
+    with _conn() as conn:
+        conn.execute(
+            """
+            UPDATE tenant_consents
+            SET approved = ?, status = ?, cached_reply = ?, executed_at = ?
+            WHERE consent_id = ? OR execution_id = ?
+            """,
+            (approved, status, cached_reply, _now(), consent_id, execution_id),
+        )
+
+
+def complete_tenant_consent(consent_id, execution_id, approved, status, cached_reply):
+    """Commit a terminal consent, execution, history turn and audit event together."""
+    with _conn() as conn:
+        conn.execute("BEGIN IMMEDIATE")
+        conn.row_factory = sqlite3.Row
+        row = conn.execute(
+            "SELECT * FROM tenant_consents WHERE consent_id = ? AND execution_id = ?",
+            (consent_id, execution_id),
+        ).fetchone()
+        if row is None:
+            raise ValueError("Consent not found")
+        if row["status"] in ("executed", "declined"):
+            return
+        now = _now()
+        conn.execute(
+            "UPDATE tenant_consents SET approved = ?, status = ?, cached_reply = ?, executed_at = ? WHERE consent_id = ?",
+            (approved, status, cached_reply, now, consent_id),
+        )
+        conn.execute(
+            "UPDATE executions SET status = ?, pending_action = NULL, updated_at = ? WHERE execution_id = ? AND tenant_id = ?",
+            ("completed" if approved else "rejected", now, execution_id, row["tenant_id"]),
+        )
+        conn.execute(
+            "INSERT INTO tenant_sessions (tenant_id, user_id, session_id, role, content, context, created_at) VALUES (?, ?, ?, 'assistant', ?, '{}', ?)",
+            (row["tenant_id"], row["user_id"], row["session_id"], cached_reply, now),
+        )
+        conn.execute(
+            "INSERT INTO audit_events (execution_id, tenant_id, event_type, payload, timestamp) VALUES (?, ?, 'final_response', ?, ?)",
+            (execution_id, row["tenant_id"], json.dumps({"text": cached_reply}), now),
+        )
