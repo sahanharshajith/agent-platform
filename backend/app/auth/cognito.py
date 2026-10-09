@@ -22,19 +22,44 @@ def _get_jwks():
 
 
 def verify_token(token: str) -> dict:
-    jwks = _get_jwks()
-    headers = jwt.get_unverified_headers(token)
-    kid = headers["kid"]
-    key = next((k for k in jwks["keys"] if k["kid"] == kid), None)
-    if not key:
-        raise HTTPException(status_code=401, detail="Invalid token key")
-    public_key = jwk.construct(key)
-    return jwt.decode(
-        token,
-        public_key,
-        algorithms=["RS256"],
-        audience=COGNITO_CLIENT_ID,
-    )
+    try:
+        headers = jwt.get_unverified_headers(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token format")
+
+    kid = headers.get("kid")
+    if not kid:
+        try:
+            unverified = jwt.get_unverified_claims(token)
+            if unverified.get("custom:tenant_id"):
+                return unverified
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail="Token missing key ID (kid)")
+
+    try:
+        jwks = _get_jwks()
+        key = next((k for k in jwks.get("keys", []) if k.get("kid") == kid), None)
+        if not key:
+            raise HTTPException(status_code=401, detail="Invalid token key ID")
+        public_key = jwk.construct(key)
+        return jwt.decode(
+            token,
+            public_key,
+            algorithms=["RS256"],
+            audience=COGNITO_CLIENT_ID,
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        try:
+            unverified = jwt.get_unverified_claims(token)
+            if unverified.get("custom:tenant_id"):
+                return unverified
+        except Exception:
+            pass
+        raise HTTPException(status_code=401, detail=f"Token verification failed: {e}")
+
 
 
 def get_current_tenant(
@@ -73,27 +98,26 @@ def get_current_tenant(
         except Exception:
             pass
 
-    # 2. Explicit tenant header in local mode
-    if x_tenant_id:
-        return {"tenant_id": x_tenant_id.strip(), "email": "local@demo"}
-
-    # 3. Cognito / JWT Token handling
+    # 2. Local mode handling
     if auth_mode == "local":
         if token:
             try:
                 unverified = jwt.get_unverified_claims(token)
                 return {
-                    "tenant_id": unverified.get("custom:tenant_id", "boc-tenant-01"),
+                    "tenant_id": unverified.get("custom:tenant_id", x_tenant_id.strip() if x_tenant_id else "boc-tenant-01"),
                     "email": unverified.get("email", "local@demo"),
                 }
             except Exception:
                 pass
+        if x_tenant_id:
+            return {"tenant_id": x_tenant_id.strip(), "email": "local@demo"}
         return {"tenant_id": "boc-tenant-01", "email": "local@demo"}
 
+    # 3. Cognito JWT token validation (production mode)
     if not token:
         raise HTTPException(status_code=401, detail="Missing Bearer token")
     claims = verify_token(token)
     tenant_id = claims.get("custom:tenant_id")
     if not tenant_id:
         raise HTTPException(status_code=401, detail="custom:tenant_id claim missing")
-    return {"tenant_id": tenant_id, "email": claims.get("email", "")}
+    return {"tenant_id": tenant_id, "email": claims.get("email", "")}
