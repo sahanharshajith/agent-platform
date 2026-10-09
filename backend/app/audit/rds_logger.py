@@ -627,10 +627,10 @@ def get_tenant_session_history(
                 """
                 SELECT role, content FROM tenant_sessions
                 WHERE tenant_id = %s AND user_id = %s AND session_id = %s
-                ORDER BY created_at DESC
+                ORDER BY created_at DESC, id DESC
                 LIMIT %s
                 """,
-                (tenant_id, user_id, session_id, limit),
+                (tenant_id, user_id, session_id, max(0, limit)),
             )
             rows = cur.fetchall()
             return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
@@ -660,11 +660,7 @@ def create_tenant_consent(
                     consent_id, execution_id, tenant_id, user_id, session_id,
                     consent_token, action, tool_name, tool_args, details, status, created_at
                 ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, 'pending', %s)
-                ON CONFLICT (consent_id) DO UPDATE SET
-                    consent_token = EXCLUDED.consent_token,
-                    tool_args = EXCLUDED.tool_args,
-                    details = EXCLUDED.details,
-                    status = 'pending'
+                ON CONFLICT (consent_id) DO NOTHING
                 """,
                 (
                     consent_id,
@@ -706,6 +702,65 @@ def get_tenant_consent(
                 if row:
                     return dict(row)
     return None
+
+
+def bind_tenant_consent(consent_id: str, external_consent_id: str, approved: bool) -> bool:
+    """Bind a callback atomically, permitting only identical callback replays."""
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT details FROM tenant_consents WHERE consent_id = %s FOR UPDATE",
+                (consent_id,),
+            )
+            row = cur.fetchone()
+            if row is None:
+                return False
+            details = row["details"]
+            if isinstance(details, str):
+                details = json.loads(details)
+            details = dict(details or {})
+            if "external_consent_id" in details or "decision" in details:
+                return (
+                    details.get("external_consent_id") == external_consent_id
+                    and details.get("decision") is approved
+                )
+            details.update(external_consent_id=external_consent_id, decision=approved)
+            cur.execute(
+                "UPDATE tenant_consents SET details = %s::jsonb WHERE consent_id = %s",
+                (json.dumps(details, default=str), consent_id),
+            )
+    return True
+
+
+def complete_tenant_consent(consent_id, execution_id, approved, status, cached_reply):
+    """Commit completion atomically so retries cannot leave a half-finished audit."""
+    with _conn() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                "SELECT * FROM tenant_consents WHERE consent_id = %s AND execution_id = %s FOR UPDATE",
+                (consent_id, execution_id),
+            )
+            row = cur.fetchone()
+            if row is None:
+                raise ValueError("Consent not found")
+            if row["status"] in ("executed", "declined"):
+                return
+            cur.execute(
+                "UPDATE tenant_consents SET approved = %s, status = %s, cached_reply = %s, executed_at = NOW() WHERE consent_id = %s",
+                (approved, status, cached_reply, consent_id),
+            )
+            cur.execute(
+                "UPDATE executions SET status = %s, pending_action = NULL, updated_at = NOW() WHERE execution_id = %s AND tenant_id = %s",
+                ("completed" if approved else "rejected", execution_id, row["tenant_id"]),
+            )
+            cur.execute(
+                "INSERT INTO tenant_sessions (tenant_id, user_id, session_id, role, content, context, created_at) VALUES (%s, %s, %s, 'assistant', %s, '{}'::jsonb, NOW())",
+                (row["tenant_id"], row["user_id"], row["session_id"], cached_reply),
+            )
+            cur.execute(
+                "INSERT INTO audit_events (execution_id, tenant_id, event_type, payload, timestamp) VALUES (%s, %s, 'final_response', %s::jsonb, NOW())",
+                (execution_id, row["tenant_id"], json.dumps({"text": cached_reply})),
+            )
 
 
 def record_tenant_consent_outcome(
