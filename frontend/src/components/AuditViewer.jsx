@@ -28,7 +28,7 @@ export default function AuditViewer({ activeExecutionId }) {
   };
 
   return (
-    <div className="p-5 space-y-4 h-full overflow-y-auto scrollbar-thin scrollbar-thumb-slate-700 scrollbar-track-transparent">
+    <div className="p-5 space-y-4 h-full overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#334155_transparent] bg-slate-900/20">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2.5">
@@ -101,8 +101,7 @@ export default function AuditViewer({ activeExecutionId }) {
           {events.map((ev, i) => (
             <div
               key={i}
-              className="bg-slate-800/50 border border-slate-700/40 rounded-xl p-3 text-xs 
-                         hover:border-slate-600/50 transition-colors duration-150"
+              className="bg-slate-800/50 border border-slate-700/40 rounded-xl p-3 text-xs hover:border-indigo-500/30 transition-colors duration-150"
             >
               <div className="flex items-center justify-between mb-2">
                 <span className="font-mono text-[11px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">

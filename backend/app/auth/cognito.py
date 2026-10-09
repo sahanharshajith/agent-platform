@@ -44,9 +44,18 @@ def get_current_tenant(
     auth_mode = os.getenv("AUTH_MODE", "local")
 
     if auth_mode == "local":
-        if not x_tenant_id:
-            raise HTTPException(status_code=401, detail="X-Tenant-Id header required in local mode")
-        return {"tenant_id": x_tenant_id, "email": "local@demo"}
+        if x_tenant_id:
+            return {"tenant_id": x_tenant_id, "email": "local@demo"}
+        if authorization.startswith("Bearer "):
+            try:
+                unverified = jwt.get_unverified_claims(authorization.replace("Bearer ", ""))
+                return {
+                    "tenant_id": unverified.get("custom:tenant_id", "boc-tenant-01"),
+                    "email": unverified.get("email", "local@demo"),
+                }
+            except Exception:
+                pass
+        return {"tenant_id": "boc-tenant-01", "email": "local@demo"}
 
     if not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Missing Bearer token")
