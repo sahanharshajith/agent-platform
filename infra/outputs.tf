@@ -27,3 +27,8 @@ output "api_gateway_id" {
   description = "API Gateway ID"
   value       = aws_apigatewayv2_api.main.id
 }
+
+output "frontend_url" {
+  description = "S3 static website URL for the frontend"
+  value       = aws_s3_bucket_website_configuration.frontend.website_endpoint
+}
