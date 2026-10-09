@@ -17,3 +17,13 @@ output "cognito_user_pool_arn" {
   description = "Cognito User Pool ARN"
   value       = aws_cognito_user_pool.main.arn
 }
+
+output "api_gateway_url" {
+  description = "API Gateway invoke URL"
+  value       = aws_apigatewayv2_stage.default.invoke_url
+}
+
+output "api_gateway_id" {
+  description = "API Gateway ID"
+  value       = aws_apigatewayv2_api.main.id
+}
