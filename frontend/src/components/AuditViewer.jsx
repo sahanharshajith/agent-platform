@@ -1,138 +1,364 @@
-// src/components/AuditViewer.jsx
-import { useState } from "react";
-import { getAudit, listAudits } from "../api/client";
+import React, { useState, useEffect } from "react";
+import {
+  Search,
+  MessageSquare,
+  Wrench,
+  ShieldCheck,
+  CheckCircle,
+  AlertCircle,
+  Bot,
+  Copy,
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Clock,
+  Radio,
+  FileJson,
+  Layers,
+  Info,
+} from "lucide-react";
+import StatusBadge from "./StatusBadge";
+import { listAudits, getAudit } from "../api/client";
 
-export default function AuditViewer({ activeExecutionId }) {
-  const [events, setEvents] = useState([]);
+export default function AuditViewer({ initialExecutionId }) {
   const [executions, setExecutions] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [selectedExecId, setSelectedExecId] = useState(initialExecutionId || null);
+  const [selectedExecution, setSelectedExecution] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [loadingList, setLoadingList] = useState(true);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+  const [expandedEvents, setExpandedEvents] = useState({ 0: true, 1: true });
+  const [copiedId, setCopiedId] = useState(null);
 
-  const loadExecutions = async () => {
-    setLoading(true);
-    try {
-      const res = await listAudits();
-      setExecutions(res.executions || []);
-    } finally {
-      setLoading(false);
+  // Poll audit executions list every 5 seconds
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchExecutions = async () => {
+      try {
+        const list = await listAudits();
+        if (isMounted) {
+          setExecutions(list);
+          if (!selectedExecId && list.length > 0) {
+            setSelectedExecId(list[0].execution_id);
+          }
+          setLoadingList(false);
+        }
+      } catch (err) {
+        console.error("Error fetching audit list:", err);
+        if (isMounted) setLoadingList(false);
+      }
+    };
+
+    fetchExecutions();
+    const interval = setInterval(fetchExecutions, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Sync initialExecutionId if prop changes
+  useEffect(() => {
+    if (initialExecutionId) {
+      setSelectedExecId(initialExecutionId);
+    }
+  }, [initialExecutionId]);
+
+  // Fetch execution events whenever selectedExecId changes or on poll
+  useEffect(() => {
+    if (!selectedExecId) return;
+    let isMounted = true;
+
+    const fetchDetail = async () => {
+      setLoadingDetail(true);
+      try {
+        const detail = await getAudit(selectedExecId);
+        if (isMounted) {
+          setSelectedExecution(detail);
+          setLoadingDetail(false);
+        }
+      } catch (err) {
+        console.error("Error fetching execution detail:", err);
+        if (isMounted) setLoadingDetail(false);
+      }
+    };
+
+    fetchDetail();
+    // Poll detail every 5s while looking at this execution
+    const interval = setInterval(fetchDetail, 5000);
+
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [selectedExecId]);
+
+  const filteredExecutions = executions.filter((ex) => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      (ex.execution_id || "").toLowerCase().includes(q) ||
+      (ex.tenant_id || "").toLowerCase().includes(q)
+    );
+  });
+
+  const toggleEventExpanded = (index) => {
+    setExpandedEvents((prev) => ({
+      ...prev,
+      [index]: !prev[index],
+    }));
+  };
+
+  const copyToClipboard = (text, id) => {
+    navigator.clipboard.writeText(text);
+    setCopiedId(id);
+    setTimeout(() => setCopiedId(null), 2000);
+  };
+
+  const getEventIcon = (eventType) => {
+    switch (eventType) {
+      case "user_message":
+        return <MessageSquare className="w-4 h-4 text-sky-500" />;
+      case "tool_call":
+        return <Wrench className="w-4 h-4 text-amber-500" />;
+      case "policy":
+        return <ShieldCheck className="w-4 h-4 text-purple-500" />;
+      case "approval_decision":
+        return <Info className="w-4 h-4 text-emerald-500" />;
+      case "final_response":
+        return <Bot className="w-4 h-4 text-emerald-400" />;
+      default:
+        return <Layers className="w-4 h-4 text-indigo-400" />;
     }
   };
 
-  const loadOne = async (execution_id) => {
-    setLoading(true);
+  const formatTimestamp = (ts) => {
     try {
-      const res = await getAudit(execution_id);
-      setEvents(res.events || []);
-    } finally {
-      setLoading(false);
+      const d = new Date(ts);
+      return d.toLocaleTimeString([], {
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch (e) {
+      return ts;
     }
   };
 
   return (
-    <div className="p-5 space-y-4 h-full overflow-y-auto [scrollbar-width:thin] [scrollbar-color:#334155_transparent] bg-slate-900/20">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg bg-indigo-500/15 border border-indigo-500/25 flex items-center justify-center">
-            <svg className="w-4 h-4 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6h4.5m4.5 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-            </svg>
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      {/* Left Column: List of past executions */}
+      <div className="lg:col-span-5 space-y-4">
+        {/* Search Header */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-4 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              Audit Logs ({filteredExecutions.length})
+            </span>
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-400">
+              <Radio className="w-3 h-3 text-emerald-500 animate-pulse" />
+              <span>Polling 5s</span>
+            </div>
           </div>
-          <span className="text-sm font-semibold text-slate-200 tracking-tight">Audit Trail</span>
+
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder="Filter by execution_id or tenant_id..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-9 pr-3 py-2 text-xs rounded-xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+            />
+          </div>
         </div>
-        <button
-          onClick={loadExecutions}
-          disabled={loading}
-          className="text-xs font-medium text-slate-400 hover:text-slate-200 
-                     bg-slate-800/80 hover:bg-slate-700/80 border border-slate-700/40 
-                     px-3 py-1.5 rounded-lg transition-all duration-200 
-                     disabled:opacity-50 flex items-center gap-1.5"
-        >
-          {loading ? (
-            <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-            </svg>
+
+        {/* Executions Scrollable List */}
+        <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel overflow-hidden shadow-sm divide-y divide-slate-100 dark:divide-white/5 max-h-[calc(100vh-280px)] overflow-y-auto">
+          {loadingList ? (
+            <div className="p-8 text-center text-xs text-slate-400">Loading audit trail...</div>
+          ) : filteredExecutions.length === 0 ? (
+            <div className="p-8 text-center text-xs text-slate-400">
+              No executions matched your search.
+            </div>
           ) : (
-            <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-            </svg>
+            filteredExecutions.map((item) => {
+              const isSelected = item.execution_id === selectedExecId;
+              return (
+                <div
+                  key={item.execution_id}
+                  onClick={() => setSelectedExecId(item.execution_id)}
+                  className={`p-3.5 transition-all cursor-pointer ${
+                    isSelected
+                      ? "bg-indigo-50/80 dark:bg-indigo-950/30 border-l-4 border-indigo-600 dark:border-indigo-500"
+                      : "hover:bg-slate-50/80 dark:hover:bg-slate-800/40"
+                  }`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-100 truncate">
+                      {item.execution_id}
+                    </span>
+                    <StatusBadge status={item.status} />
+                  </div>
+
+                  <div className="mt-1.5 flex items-center justify-between text-[11px] text-slate-400 dark:text-slate-500 font-mono">
+                    <span className="flex items-center gap-1">
+                      <Clock className="w-3 h-3" />
+                      {formatTimestamp(item.timestamp)}
+                    </span>
+                    <span>Tenant: {item.tenant_id}</span>
+                  </div>
+                </div>
+              );
+            })
           )}
-          Refresh
-        </button>
+        </div>
       </div>
 
-      {/* Executions list */}
-      {executions.length > 0 && (
-        <div className="space-y-1.5">
-          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider px-1">Executions</p>
-          {executions.map((e) => {
-            const isActive = e.execution_id === activeExecutionId;
-            return (
-              <button
-                key={e.execution_id}
-                onClick={() => loadOne(e.execution_id)}
-                className={`w-full text-left text-xs px-3 py-2 rounded-lg transition-all duration-150 
-                  flex items-center justify-between group ${
-                  isActive
-                    ? "bg-indigo-500/15 border border-indigo-500/30 text-indigo-300"
-                    : "bg-slate-800/50 hover:bg-slate-800 border border-transparent hover:border-slate-700/40 text-slate-300"
-                }`}
-              >
-                <span className="font-mono truncate">{e.execution_id}</span>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded shrink-0 ml-2 ${
-                  e.status === "pending_approval"
-                    ? "bg-amber-500/15 text-amber-400 border border-amber-500/20"
-                    : e.status === "completed"
-                    ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/20"
-                    : "bg-slate-700/50 text-slate-400 border border-slate-600/30"
-                }`}>
-                  {e.status}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Events list */}
-      {events.length > 0 && (
-        <div className="space-y-2">
-          <p className="text-[10px] font-medium text-slate-500 uppercase tracking-wider px-1">Events</p>
-          {events.map((ev, i) => (
-            <div
-              key={i}
-              className="bg-slate-800/50 border border-slate-700/40 rounded-xl p-3 text-xs hover:border-indigo-500/30 transition-colors duration-150"
-            >
-              <div className="flex items-center justify-between mb-2">
-                <span className="font-mono text-[11px] text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">
-                  {ev.event_type}
-                </span>
-                <span className="text-[10px] text-slate-500 font-mono">
-                  {new Date(ev.timestamp).toLocaleTimeString()}
-                </span>
+      {/* Right Column: Timeline of events for the selected execution */}
+      <div className="lg:col-span-7 space-y-4">
+        {selectedExecution ? (
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-6 shadow-sm space-y-6">
+            {/* Header info */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-white/10">
+              <div>
+                <div className="flex items-center gap-3">
+                  <h3 className="font-mono text-sm sm:text-base font-bold text-slate-900 dark:text-white">
+                    {selectedExecution.execution_id}
+                  </h3>
+                  <StatusBadge status={selectedExecution.status} />
+                </div>
+                <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                  Tenant: <span className="font-mono">{selectedExecution.tenant_id}</span> •{" "}
+                  {selectedExecution.events?.length || 0} recorded events
+                </p>
               </div>
-              <pre className="text-[10px] font-mono text-slate-400 bg-slate-900/60 rounded-lg p-2.5 overflow-x-auto leading-relaxed border border-slate-800/60">
-                {JSON.stringify(ev.payload, null, 2)}
-              </pre>
-            </div>
-          ))}
-        </div>
-      )}
 
-      {/* Empty state */}
-      {!executions.length && !events.length && (
-        <div className="flex flex-col items-center justify-center py-12 text-center space-y-3">
-          <div className="w-10 h-10 rounded-full bg-slate-800/50 border border-slate-700/40 flex items-center justify-center">
-            <svg className="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M19.5 14.25v-2.625a3.375 3.375 0 00-3.375-3.375h-1.5A1.125 1.125 0 0113.5 7.125v-1.5a3.375 3.375 0 00-3.375-3.375H8.25m0 12.75h7.5m-7.5 3H12M10.5 2.25H5.625c-.621 0-1.125.504-1.125 1.125v17.25c0 .621.504 1.125 1.125 1.125h12.75c.621 0 1.125-.504 1.125-1.125V11.25a9 9 0 00-9-9z" />
-            </svg>
+              <button
+                type="button"
+                onClick={() =>
+                  copyToClipboard(
+                    JSON.stringify(selectedExecution, null, 2),
+                    selectedExecution.execution_id
+                  )
+                }
+                className="self-start sm:self-center flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+              >
+                {copiedId === selectedExecution.execution_id ? (
+                  <>
+                    <Check className="w-3.5 h-3.5 text-emerald-500" />
+                    <span>Copied JSON</span>
+                  </>
+                ) : (
+                  <>
+                    <Copy className="w-3.5 h-3.5" />
+                    <span>Copy Full Audit</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Timeline Events List */}
+            <div className="relative pl-6 sm:pl-8 space-y-6 before:absolute before:left-3 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200 dark:before:bg-slate-800">
+              {(selectedExecution.events || []).map((ev, idx) => {
+                const isExpanded = expandedEvents[idx];
+                const isApproval = ev.event_type === "approval_decision";
+
+                return (
+                  <div key={idx} className="relative group">
+                    {/* Timeline Node Icon */}
+                    <div className="absolute -left-6 sm:-left-8 top-1 w-6 h-6 rounded-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 flex items-center justify-center shadow-sm">
+                      {getEventIcon(ev.event_type)}
+                    </div>
+
+                    <div className="rounded-xl border border-slate-200/80 dark:border-white/10 bg-white/70 dark:bg-slate-900/60 overflow-hidden shadow-xs">
+                      {/* Event Row Header */}
+                      <button
+                        type="button"
+                        onClick={() => toggleEventExpanded(idx)}
+                        className="w-full flex items-center justify-between p-3.5 text-left hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="font-mono text-xs font-bold text-slate-900 dark:text-slate-200 uppercase tracking-wide">
+                            {ev.event_type}
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                            {formatTimestamp(ev.timestamp)}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {isApproval && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded bg-amber-500/10 text-amber-500 border border-amber-500/20">
+                              READ-ONLY
+                            </span>
+                          )}
+                          {isExpanded ? (
+                            <ChevronDown className="w-4 h-4 text-slate-400" />
+                          ) : (
+                            <ChevronRight className="w-4 h-4 text-slate-400" />
+                          )}
+                        </div>
+                      </button>
+
+                      {/* Informational Read-Only Banner if Approval Decision */}
+                      {isApproval && (
+                        <div className="px-3.5 py-2 bg-amber-500/10 border-t border-amber-500/20 text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2 font-sans">
+                          <Info className="w-4 h-4 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-semibold">Informational Entry: </span>
+                            This event reflects end-user consent or interaction recorded on the website widget. The admin console does not execute approvals directly.
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Collapsible Details JSON view */}
+                      {isExpanded && (
+                        <div className="p-3.5 border-t border-slate-200/80 dark:border-white/10 bg-slate-50/50 dark:bg-slate-950/40 space-y-2">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                            <span className="flex items-center gap-1 font-mono uppercase text-[10px]">
+                              <FileJson className="w-3.5 h-3.5 text-indigo-400" />
+                              Payload Details
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                copyToClipboard(
+                                  JSON.stringify(ev.details, null, 2),
+                                  `ev-${idx}`
+                                )
+                              }
+                              className="text-slate-400 hover:text-indigo-500 text-[10px] flex items-center gap-1"
+                            >
+                              {copiedId === `ev-${idx}` ? (
+                                <Check className="w-3 h-3 text-emerald-500" />
+                              ) : (
+                                <Copy className="w-3 h-3" />
+                              )}
+                              Copy JSON
+                            </button>
+                          </div>
+
+                          <pre className="p-3 rounded-lg bg-slate-900 text-slate-200 font-mono text-[11px] overflow-x-auto leading-relaxed border border-slate-800">
+                            {JSON.stringify(ev.details || {}, null, 2)}
+                          </pre>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
-          <div>
-            <p className="text-sm font-medium text-slate-400">No audit history</p>
-            <p className="text-xs text-slate-600 mt-1">Click refresh to load executions.</p>
+        ) : (
+          <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-12 text-center text-slate-400">
+            <Layers className="w-8 h-8 mx-auto mb-2 opacity-40" />
+            <p className="text-sm">Select an execution from the left column to view its audit trail timeline.</p>
           </div>
-        </div>
-      )}
+        )}
+      </div>
     </div>
   );
 }
