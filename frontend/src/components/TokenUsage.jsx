@@ -1,280 +1,52 @@
-import React from "react";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  BarChart,
-  Bar,
-  Cell,
-} from "recharts";
-import { Cpu, DollarSign, Wallet, Users, Zap } from "lucide-react";
-import SummaryCard from "./SummaryCard";
+import { useState } from 'react';
+import { ArrowRight, CalendarDays, ChartNoAxesCombined, ChevronDown, ChevronRight, CircleHelp, Coins, DollarSign, Download, Gauge, Info, Users } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useData, useExecutionDetails } from '../context/DataContext';
+import { useUI } from '../context/UIContext';
+import { compact, dateTime, downloadCsv, executionMeta, number, relativeTime } from '../lib/format';
+import SummaryCard from './SummaryCard';
+import { DistributionChart, VolumeChart } from './Charts';
+import { EmptyState, ErrorBanner, PageHeader, SkeletonRows } from './Primitives';
 
-// Generate 30 days of token trend data
-const generateMonthlyTokenTrend = () => {
-  const data = [];
-  const now = new Date();
-  for (let i = 29; i >= 0; i--) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const dayStr = d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
-    // Realistic curve with weekday peaks
-    const base = 35000 + Math.sin(i / 3) * 12000;
-    const randomVariation = Math.floor(Math.random() * 8000);
-    const total = Math.floor(base + randomVariation);
-    data.push({
-      date: dayStr,
-      tokens: total,
-      sonnet: Math.floor(total * 0.65),
-      haiku: Math.floor(total * 0.28),
-      embeddings: Math.floor(total * 0.07),
-    });
-  }
-  return data;
-};
-
-const monthlyData = generateMonthlyTokenTrend();
-
-const modelSpendData = [
-  { model: "Claude 3.5 Sonnet", tokens: 963885, cost: 22.15, color: "#6366F1" },
-  { model: "Claude 3 Haiku", tokens: 415215, cost: 4.82, color: "#8B5CF6" },
-  { model: "Titan Embeddings v2", tokens: 103800, cost: 1.48, color: "#38BDF8" },
-];
-
-const recentExecutionsUsage = [
-  { id: "exec-9941a87b", timestamp: "18:31:12", model: "Claude 3.5 Sonnet", input: 890, output: 530, total: 1420, cost: "$0.021" },
-  { id: "exec-8720b12c", timestamp: "18:28:44", model: "Claude 3 Haiku", input: 420, output: 260, total: 680, cost: "$0.003" },
-  { id: "exec-7619c34d", timestamp: "18:24:15", model: "Claude 3.5 Sonnet", input: 1450, output: 680, total: 2130, cost: "$0.034" },
-  { id: "exec-6508d56e", timestamp: "18:18:02", model: "Claude 3 Haiku", input: 390, output: 130, total: 520, cost: "$0.002" },
-  { id: "exec-5497e78f", timestamp: "18:10:49", model: "Titan Embeddings", input: 410, output: 0, total: 410, cost: "$0.0004" },
-  { id: "exec-4386f90a", timestamp: "18:02:30", model: "Claude 3.5 Sonnet", input: 1120, output: 770, total: 1890, cost: "$0.029" },
-  { id: "exec-3275a12b", timestamp: "17:49:11", model: "Claude 3.5 Sonnet", input: 980, output: 670, total: 1650, cost: "$0.025" },
-];
-
-export default function TokenUsage() {
-  return (
-    <div className="space-y-8">
-      {/* 4 Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard
-          title="Total Tokens Used (MTD)"
-          value="1,482,900"
-          subtitle="Across all deployed agents"
-          icon={Cpu}
-          trend="+14.2%"
-          trendPositive={true}
-        />
-        <SummaryCard
-          title="Remaining Budget"
-          value="3,517,100"
-          subtitle="70.3% of 5.0M allocation remaining"
-          icon={Wallet}
-          badge="Healthy"
-        />
-        <SummaryCard
-          title="Cost Estimate (MTD)"
-          value="$28.45"
-          subtitle="Projected $42.10 by month end"
-          icon={DollarSign}
-          trend="-3.1%"
-          trendPositive={true}
-        />
-        <SummaryCard
-          title="Active Sessions"
-          value="18"
-          subtitle="Real-time end-user conversations"
-          icon={Users}
-          trend="+4"
-          trendPositive={true}
-        />
-      </div>
-
-      {/* Two Column Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Line Chart: Daily Token Usage over last 30 days */}
-        <div className="lg:col-span-8 rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                Daily Token Consumption (Last 30 Days)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Aggregate daily input and completion tokens across tenant endpoints
-              </p>
-            </div>
-            <div className="flex items-center gap-2 text-xs">
-              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500"></span>
-              <span className="text-slate-500 dark:text-slate-400">Tokens / Day</span>
-            </div>
-          </div>
-
-          <div className="h-72 w-full pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={monthlyData} margin={{ top: 5, right: 10, left: -15, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                <XAxis
-                  dataKey="date"
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  tickLine={false}
-                  axisLine={{ stroke: "rgba(148, 163, 184, 0.2)" }}
-                />
-                <YAxis
-                  tick={{ fontSize: 11, fill: "#94a3b8" }}
-                  tickLine={false}
-                  axisLine={false}
-                  tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "0.75rem",
-                    fontSize: "0.75rem",
-                    color: "#f8fafc",
-                  }}
-                  formatter={(val) => [`${val.toLocaleString()} tokens`, "Usage"]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="tokens"
-                  stroke="#6366F1"
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 5, fill: "#8B5CF6" }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Bar Chart: Token Spend Per Model */}
-        <div className="lg:col-span-4 rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-6 shadow-sm space-y-4">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-              Spend by Foundation Model
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Breakdown of token consumption & charges
-            </p>
-          </div>
-
-          <div className="h-56 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={modelSpendData} layout="vertical" margin={{ top: 5, right: 20, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="rgba(148, 163, 184, 0.15)" />
-                <XAxis
-                  type="number"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  tickFormatter={(val) => `${(val / 1000).toFixed(0)}k`}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  dataKey="model"
-                  type="category"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  axisLine={false}
-                  tickLine={false}
-                  width={90}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "0.75rem",
-                    fontSize: "0.75rem",
-                    color: "#f8fafc",
-                  }}
-                  formatter={(val, name, item) => [
-                    `${val.toLocaleString()} tokens ($${item.payload.cost})`,
-                    "Consumption",
-                  ]}
-                />
-                <Bar dataKey="tokens" radius={[0, 6, 6, 0]}>
-                  {modelSpendData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="pt-2 border-t border-slate-200/80 dark:border-white/10 space-y-2">
-            {modelSpendData.map((item, idx) => (
-              <div key={idx} className="flex items-center justify-between text-xs">
-                <div className="flex items-center gap-2">
-                  <span className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }} />
-                  <span className="text-slate-600 dark:text-slate-300 font-medium">{item.model}</span>
-                </div>
-                <div className="text-right">
-                  <span className="font-mono font-semibold text-slate-900 dark:text-white">
-                    ${item.cost.toFixed(2)}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Table: Recent Executions with Tokens Used */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel overflow-hidden shadow-sm space-y-4 p-6">
-        <div>
-          <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-            Recent Executions Token Ledger
-          </h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
-            Per-execution token metering and cost breakdown
-          </p>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[11px]">
-                <th className="py-3 px-4">Execution ID</th>
-                <th className="py-3 px-4">Time</th>
-                <th className="py-3 px-4">Model</th>
-                <th className="py-3 px-4 text-right">Input Tokens</th>
-                <th className="py-3 px-4 text-right">Output Tokens</th>
-                <th className="py-3 px-4 text-right">Total Tokens</th>
-                <th className="py-3 px-4 text-right">Estimated Cost</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-white/5 font-mono">
-              {recentExecutionsUsage.map((row) => (
-                <tr key={row.id} className="hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors">
-                  <td className="py-3 px-4 font-semibold text-indigo-600 dark:text-indigo-400">
-                    {row.id}
-                  </td>
-                  <td className="py-3 px-4 text-slate-500 dark:text-slate-400 font-sans">
-                    {row.timestamp}
-                  </td>
-                  <td className="py-3 px-4 text-slate-700 dark:text-slate-300 font-sans">
-                    {row.model}
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                    {row.input.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-right text-slate-600 dark:text-slate-400">
-                    {row.output.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-right font-bold text-slate-900 dark:text-white">
-                    {row.total.toLocaleString()}
-                  </td>
-                  <td className="py-3 px-4 text-right text-emerald-600 dark:text-emerald-400 font-bold">
-                    {row.cost}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+export default function TokenUsage({ onSelect }) {
+  const { executions, analytics, loading, error, refresh } = useData();
+  const { notify } = useUI();
+  const [range, setRange] = useState(30);
+  const rows = executions.slice(0, 10);
+  const details = useExecutionDetails(rows);
+  const exportUsage = () => {
+    downloadCsv('agentflow-observed-token-usage.csv', [['execution_id', 'timestamp', 'model', 'reported_tokens'], ...rows.map((row) => { const meta = executionMeta(details[row.execution_id]); return [row.execution_id, row.timestamp, meta.model, meta.tokens ?? 'Not reported']; })]);
+    notify('Token usage for the displayed executions exported.');
+  };
+  return <>
+    <PageHeader title="Token Usage" description="Understand your usage. Make every token count."><div className="select-button"><CalendarDays size={15} /><select value={range} onChange={(event) => setRange(Number(event.target.value))} aria-label="Token chart date range"><option value={30}>Last 30 days</option><option value={7}>Last 7 days</option></select><ChevronDown size={13} /></div><button className="button secondary" onClick={exportUsage} disabled={!rows.length}><Download size={15} />Export usage</button></PageHeader>
+    <ErrorBanner message={error} onRetry={refresh} />
+    {!analytics && <div className="info-notice"><Info size={17} /><span>The current API does not expose monthly usage, budgets, pricing, or active sessions. Per-execution tokens are shown when included in audit event details.</span></div>}
+    <div className="summary-grid usage-summary-grid">
+      <SummaryCard title="Tokens used this month" value={analytics ? compact(analytics.monthlyTokens) : 'Not reported'} icon={Coins} note={analytics ? '24% of your monthly budget' : 'Usage endpoint not available'} loading={loading} showSparkline={!!analytics} onClick={() => document.getElementById('daily-token-usage')?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth', block: 'center' })} />
+      <SummaryCard title="Remaining budget" value={analytics ? compact(analytics.remainingBudget) : 'Not reported'} icon={Gauge} note={analytics ? '76% available this month' : 'Budget endpoint not available'} color="green" index={1} loading={loading} showSparkline={!!analytics} />
+      <SummaryCard title="Cost estimate" value={analytics ? `$${analytics.cost.toFixed(2)}` : 'Not reported'} icon={DollarSign} note={analytics ? 'Estimated monthly spend' : 'Pricing endpoint not available'} index={2} loading={loading} showSparkline={!!analytics} />
+      <SummaryCard title="Active sessions" value={analytics ? number(analytics.activeSessions) : 'Not reported'} icon={Users} note={analytics ? 'Across your active workspace' : 'Sessions endpoint not available'} index={3} loading={loading} showSparkline={!!analytics} />
     </div>
-  );
+    <div className="usage-charts"><section className="panel" id="daily-token-usage"><div className="panel-header"><div><h2>Daily token usage</h2><p>Your consumption over the last {range} days.</p></div><span className="chart-legend"><span className="tiny-dot purple" />Total tokens</span></div>{analytics ? <><div className="chart-metric-row"><div><strong>{compact(analytics.dailyTokens.slice(-range).reduce((sum, day) => sum + day.tokens, 0))}</strong><span>tokens consumed</span></div></div><VolumeChart data={analytics.dailyTokens.slice(-range)} dataKey="tokens" label={`Daily token usage over the last ${range} days`} height={230} /></> : <EmptyState icon={ChartNoAxesCombined} title="Usage data is not available" description="Your existing endpoints do not provide aggregate token usage." />}</section><section className="panel"><div className="panel-header"><div><h2>Usage by model</h2><p>Token distribution this month.</p></div><span className="help-icon" title="Token counts by model. These are not billed dollar amounts." tabIndex={0}><CircleHelp size={16} /></span></div>{analytics ? <><DistributionChart data={analytics.modelTokens} dataKey="tokens" horizontal height={214} /><div className="model-budget-footer"><span>Total model usage</span><strong>{compact(analytics.monthlyTokens)} tokens</strong></div></> : <EmptyState icon={Coins} title="No model totals reported" description="Model aggregates are not part of the current API contract." />}</section></div>
+    <section className="panel">
+      <div className="panel-header"><div><h2>Usage by execution</h2><p>Reported token counts for your latest conversations.</p></div><Link to="/activity" className="text-button subtle-link">View all executions<ArrowRight size={14} /></Link></div>
+      <div className="table-scroll"><table className="data-table usage-table">
+        <thead><tr><th>Execution ID</th><th>Model</th><th>User message</th><th className="number-cell">Tokens used</th><th>Time</th><th><span className="sr-only">Details</span></th></tr></thead>
+        <tbody>{loading ? <SkeletonRows columns={6} /> : rows.map((row) => {
+          const meta = executionMeta(details[row.execution_id]);
+          return <tr key={row.execution_id} className="clickable-row" onClick={() => onSelect(row)}>
+            <td><button className="execution-link mono" aria-label={`View token details for ${row.execution_id}`}>{row.execution_id}</button></td>
+            <td><span className="model-label"><span className="tiny-dot purple" />{meta.model || 'Not reported'}</span></td>
+            <td><span className="truncate-message">{meta.message || 'Not reported'}</span></td>
+            <td className="number-cell mono token-total">{meta.tokens === null ? <span className="muted">Not reported</span> : number(meta.tokens)}</td>
+            <td className="muted" title={dateTime(row.timestamp)}>{relativeTime(row.timestamp)}</td>
+            <td><ChevronRight size={14} className="row-chevron" /></td>
+          </tr>;
+        })}</tbody>
+      </table></div>
+      {!loading && !rows.length && <EmptyState />}
+      <div className="table-footer"><span>Showing the {rows.length} most recent executions</span><span>Usage is read-only</span></div>
+    </section>
+  </>;
 }

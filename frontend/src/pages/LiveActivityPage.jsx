@@ -1,96 +1,18 @@
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import { Radio, RefreshCw, Activity, ArrowUpRight } from "lucide-react";
-import LiveActivityTable from "../components/LiveActivityTable";
-import ActivityDrawer from "../components/ActivityDrawer";
-import { listAudits, getAudit } from "../api/client";
+import { Download, Pause, Play, RefreshCw } from 'lucide-react';
+import { useData } from '../context/DataContext';
+import { useUI } from '../context/UIContext';
+import { downloadCsv, relativeTime } from '../lib/format';
+import LiveActivityTable from '../components/LiveActivityTable';
+import { ErrorBanner, PageHeader } from '../components/Primitives';
 
-export default function LiveActivityPage() {
-  const [executions, setExecutions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedExecution, setSelectedExecution] = useState(null);
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
-  const [lastPollTime, setLastPollTime] = useState(new Date());
-
-  const fetchLiveActivity = async () => {
-    try {
-      const data = await listAudits();
-      setExecutions(data);
-      setLastPollTime(new Date());
-    } catch (err) {
-      console.error("Polling error in LiveActivityPage:", err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  useEffect(() => {
-    fetchLiveActivity();
-    // Real-time polling every 5s
-    const pollInterval = setInterval(fetchLiveActivity, 5000);
-    return () => clearInterval(pollInterval);
-  }, []);
-
-  const handleSelectExecution = async (item) => {
-    try {
-      const detail = await getAudit(item.execution_id);
-      setSelectedExecution(detail);
-    } catch (err) {
-      setSelectedExecution(item);
-    }
-    setIsDrawerOpen(true);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-6"
-    >
-      {/* Header with real-time heartbeat */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-              Live Agent Activity
-            </h1>
-            <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
-              <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
-              <span>Real-time (5s poll)</span>
-            </span>
-          </div>
-          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Continuous stream of autonomous agent interactions, intent classifications, and policy gates
-          </p>
-        </div>
-
-        <div className="flex items-center gap-3 text-xs text-slate-400 font-mono">
-          <span>Synced: {lastPollTime.toLocaleTimeString()}</span>
-          <button
-            type="button"
-            onClick={fetchLiveActivity}
-            className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
-            title="Force refresh"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          </button>
-        </div>
-      </div>
-
-      {/* Main Table */}
-      <LiveActivityTable
-        executions={executions}
-        onSelectExecution={handleSelectExecution}
-        loading={loading}
-      />
-
-      {/* Detailed Side Drawer */}
-      <ActivityDrawer
-        execution={selectedExecution}
-        isOpen={isDrawerOpen}
-        onClose={() => setIsDrawerOpen(false)}
-      />
-    </motion.div>
-  );
+export default function LiveActivityPage({ onSelect }) {
+  const { executions, error, refreshing, refresh, paused, setPaused, lastUpdated } = useData();
+  const { notify } = useUI();
+  const togglePause = () => { setPaused(!paused); if (paused) refresh(); notify(paused ? 'Live updates resumed. Refreshing every 5 seconds.' : 'Live updates paused. You can still inspect executions.'); };
+  return <>
+    <PageHeader title="Live Agent Activity" description="Every conversation. Every action. As it happens."><button className="button secondary" onClick={togglePause}>{paused ? <Play size={15} /> : <Pause size={15} />}{paused ? 'Resume updates' : 'Pause updates'}</button><button className="button secondary" onClick={() => { downloadCsv('agentflow-live-activity.csv', [['execution_id', 'timestamp', 'status', 'tenant_id'], ...executions.map((row) => [row.execution_id, row.timestamp, row.status, row.tenant_id])]); notify('Activity report exported.'); }} disabled={!executions.length}><Download size={15} />Export</button></PageHeader>
+    <ErrorBanner message={error} onRetry={refresh} />
+    <div className="activity-status-row"><div><span className={`live-indicator ${paused ? 'paused' : ''}`}><span className="status-dot" />{paused ? 'Paused' : 'Live'}</span><span className="muted">{paused ? 'Automatic updates are paused' : 'Automatically refreshing every 5 seconds'}</span></div><button className="refresh-label" onClick={refresh} disabled={refreshing}><RefreshCw size={13} className={refreshing ? 'spin' : ''} />{refreshing ? 'Updating...' : lastUpdated ? `Updated ${relativeTime(lastUpdated).toLowerCase()}` : 'Connecting...'}</button></div>
+    <LiveActivityTable onSelect={onSelect} />
+  </>;
 }

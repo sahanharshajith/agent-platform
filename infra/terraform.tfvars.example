@@ -1,2 +1,12 @@
 approval_email = "your-email@example.com"
 ec2_public_ip  = "3.95.214.11"
+
+# AWS RDS PostgreSQL Configuration (Optional overrides)
+# rds_db_name                 = "agentflow"
+# rds_master_username         = "postgres"
+# rds_master_password         = "YourStrongPassword123!"
+# rds_instance_class          = "db.t4g.micro"
+# rds_allocated_storage       = 20
+# rds_engine_version          = "15.7"
+# rds_publicly_accessible     = true
+# rds_allowed_cidr_blocks     = ["0.0.0.0/0"]

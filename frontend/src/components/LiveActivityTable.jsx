@@ -1,140 +1,34 @@
-import React, { useState } from "react";
-import { Search, ChevronRight, Activity, ArrowUpDown } from "lucide-react";
-import StatusBadge from "./StatusBadge";
+import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { ChevronDown, ChevronLeft, ChevronRight, Search, ShieldCheck } from 'lucide-react';
+import { useData, useExecutionDetails } from '../context/DataContext';
+import { dateTime, executionMeta, number, time } from '../lib/format';
+import { EmptyState, SkeletonRows } from './Primitives';
+import StatusBadge from './StatusBadge';
 
-export default function LiveActivityTable({ executions = [], onSelectExecution, loading }) {
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-
-  const filtered = executions.filter((item) => {
-    const matchesSearch =
-      (item.execution_id || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.user_id || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.intent || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (item.model || "").toLowerCase().includes(searchTerm.toLowerCase());
-
-    const matchesStatus =
-      statusFilter === "all" ||
-      (statusFilter === "completed" && item.status === "completed") ||
-      (statusFilter === "pending" && (item.status === "pending_approval" || item.status.includes("pending"))) ||
-      (statusFilter === "rejected" && item.status === "rejected");
-
-    return matchesSearch && matchesStatus;
-  });
-
-  const formatTimestamp = (ts) => {
-    try {
-      const d = new Date(ts);
-      return d.toLocaleTimeString([], {
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-      });
-    } catch (e) {
-      return ts;
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      {/* Search & Filter Bar */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-          <input
-            type="text"
-            placeholder="Search by Execution ID, User, Intent, or Model..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 rounded-xl text-xs sm:text-sm bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-          />
-        </div>
-
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-slate-500 dark:text-slate-400">Status:</span>
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="px-3 py-2 rounded-xl text-xs bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-          >
-            <option value="all">All Statuses</option>
-            <option value="completed">Completed</option>
-            <option value="pending">Pending Approval</option>
-            <option value="rejected">Rejected</option>
-          </select>
-        </div>
-      </div>
-
-      {/* Table Card */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-slate-200 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/60 font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-[11px]">
-                <th className="py-3 px-4">Timestamp</th>
-                <th className="py-3 px-4">User ID</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 min-w-[200px]">Intent</th>
-                <th className="py-3 px-4">Model</th>
-                <th className="py-3 px-4 text-right">Tokens</th>
-                <th className="py-3 px-4">Execution ID</th>
-                <th className="py-3 px-4 text-center">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-white/5">
-              {filtered.length === 0 ? (
-                <tr>
-                  <td colSpan="8" className="py-12 text-center text-slate-500 dark:text-slate-400">
-                    <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                    <p className="text-sm">No agent executions found matching criteria.</p>
-                  </td>
-                </tr>
-              ) : (
-                filtered.map((item) => (
-                  <tr
-                    key={item.execution_id}
-                    onClick={() => onSelectExecution(item)}
-                    className="hover:bg-indigo-50/40 dark:hover:bg-slate-800/40 transition-colors cursor-pointer group"
-                  >
-                    <td className="py-3.5 px-4 font-mono text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                      {formatTimestamp(item.timestamp)}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono font-medium text-slate-900 dark:text-slate-200">
-                      {item.user_id || "user_anon"}
-                    </td>
-                    <td className="py-3.5 px-4 whitespace-nowrap">
-                      <StatusBadge status={item.status} />
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-700 dark:text-slate-300 font-medium truncate max-w-xs sm:max-w-md">
-                      {item.intent || "Agent query execution"}
-                    </td>
-                    <td className="py-3.5 px-4 text-slate-600 dark:text-slate-400 whitespace-nowrap">
-                      <span className="px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-[11px] font-medium border border-slate-200/50 dark:border-white/5">
-                        {item.model || "Claude 3.5 Sonnet"}
-                      </span>
-                    </td>
-                    <td className="py-3.5 px-4 text-right font-mono text-slate-700 dark:text-slate-300 whitespace-nowrap font-semibold">
-                      {(item.tokens || 1120).toLocaleString()}
-                    </td>
-                    <td className="py-3.5 px-4 font-mono text-indigo-600 dark:text-indigo-400 whitespace-nowrap font-medium">
-                      {item.execution_id}
-                    </td>
-                    <td className="py-3.5 px-4 text-center">
-                      <button
-                        type="button"
-                        className="p-1 rounded-lg text-slate-400 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:bg-indigo-50 dark:group-hover:bg-indigo-950/40 transition-colors"
-                        title="Open Telemetry Drawer"
-                      >
-                        <ChevronRight className="w-4 h-4" />
-                      </button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+export default function LiveActivityTable({ onSelect }) {
+  const { executions, loading, paused } = useData();
+  const [params, setParams] = useSearchParams();
+  const [query, setQuery] = useState('');
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(15);
+  const status = params.get('status') || 'all';
+  const filtered = useMemo(() => executions.filter((row) => (status === 'all' || row.status === status) && `${row.execution_id} ${row.tenant_id}`.toLowerCase().includes(query.trim().toLowerCase())), [executions, status, query]);
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const rows = filtered.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+  const details = useExecutionDetails(rows, !paused);
+  return <section className="panel live-table-panel">
+    <div className="table-toolbar"><div className="search-input"><Search size={16} /><input aria-label="Search execution or tenant ID" value={query} onChange={(event) => { setQuery(event.target.value); setPage(0); }} placeholder="Search execution or tenant ID..." /><kbd>/</kbd></div><div className="select-button status-select"><span className="filter-dot" /><select aria-label="Filter execution status" value={status} onChange={(event) => { setPage(0); setParams(event.target.value === 'all' ? {} : { status: event.target.value }); }}><option value="all">All statuses</option><option value="completed">Completed</option><option value="pending_approval">Pending user approval</option><option value="rejected">Rejected</option></select><ChevronDown size={13} /></div><span className="toolbar-record-count">{number(filtered.length)} executions</span></div>
+    <div className="table-scroll"><table className="data-table live-table"><thead><tr><th>Timestamp</th><th>User ID</th><th>Status</th><th>Intent</th><th>Model</th><th className="number-cell">Tokens</th><th>Execution ID</th><th><span className="sr-only">Details</span></th></tr></thead><tbody>
+      {loading ? <SkeletonRows columns={8} /> : rows.map((row) => {
+        const meta = executionMeta(details[row.execution_id]);
+        const notReported = details[row.execution_id] ? 'Not reported' : '...';
+        return <tr className="clickable-row" key={row.execution_id} onClick={() => onSelect(row)}><td className="timestamp-cell"><span>{time(row.timestamp)}</span><small>{new Date(row.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</small></td><td className="mono small-text">{meta.userId || <span className="muted">{notReported}</span>}</td><td><StatusBadge status={row.status} /></td><td className="intent-cell">{meta.intent || <span className="muted">{notReported}</span>}</td><td><span className="model-label">{meta.model && <span className="tiny-dot purple" />}{meta.model.replace('Claude ', '') || <span className="muted">{notReported}</span>}</span></td><td className="mono number-cell">{meta.tokens === null ? <span className="muted">{notReported}</span> : number(meta.tokens)}</td><td><button className="execution-link mono" title={dateTime(row.timestamp)} aria-label={`View execution ${row.execution_id}`}>{row.execution_id}</button></td><td><ChevronRight className="row-chevron" size={14} /></td></tr>;
+      })}
+    </tbody></table></div>
+    {!loading && !filtered.length && <EmptyState title={query || status !== 'all' ? 'No matching executions' : 'Your activity starts here'} description={query || status !== 'all' ? 'Try another execution ID or clear your status filter.' : 'New agent executions will appear automatically every five seconds.'} action={query || status !== 'all' ? <button className="button secondary" onClick={() => { setQuery(''); setParams({}); }}>Clear filters</button> : undefined} />}
+    <div className="pagination"><span>Showing {filtered.length ? currentPage * pageSize + 1 : 0}-{Math.min((currentPage + 1) * pageSize, filtered.length)} of {number(filtered.length)}</span><div><label>Rows per page<select value={pageSize} aria-label="Rows per page" onChange={(event) => { setPageSize(Number(event.target.value)); setPage(0); }}><option value={15}>15</option><option value={30}>30</option><option value={50}>50</option></select></label><span>{currentPage + 1} of {pageCount}</span><button className="icon-button pagination-button" aria-label="Previous page" disabled={currentPage === 0} onClick={() => setPage(currentPage - 1)}><ChevronLeft size={16} /></button><button className="icon-button pagination-button" aria-label="Next page" disabled={currentPage + 1 >= pageCount} onClick={() => setPage(currentPage + 1)}><ChevronRight size={16} /></button></div></div>
+    <div className="read-only-footnote"><ShieldCheck size={14} />Monitoring only. Customer consents are collected on your website, never in this console.</div>
+  </section>;
 }

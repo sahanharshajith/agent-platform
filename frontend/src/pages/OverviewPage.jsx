@@ -1,307 +1,81 @@
-import React, { useState, useEffect } from "react";
-import { motion } from "framer-motion";
-import {
-  ResponsiveContainer,
-  LineChart,
-  Line,
-  XAxis,
-  YAxis,
-  Tooltip,
-  CartesianGrid,
-  BarChart,
-  Bar,
-  Cell,
-} from "recharts";
-import {
-  Activity,
-  AlertTriangle,
-  CheckCircle2,
-  Cpu,
-  RefreshCw,
-  TrendingUp,
-} from "lucide-react";
-import SummaryCard from "../components/SummaryCard";
-import ActivityFeed from "../components/ActivityFeed";
-import ActivityDrawer from "../components/ActivityDrawer";
-import { listAudits, getAudit } from "../api/client";
+import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Activity, CalendarDays, CheckCheck, ChevronDown, CircleHelp, Coins, Download, Hourglass, RefreshCw } from 'lucide-react';
+import { useData } from '../context/DataContext';
+import { useAuth } from '../context/AuthContext';
+import { useUI } from '../context/UIContext';
+import { compact, dailyExecutions, downloadCsv, hourlyExecutions, number, relativeTime } from '../lib/format';
+import SummaryCard from '../components/SummaryCard';
+import ActivityFeed from '../components/ActivityFeed';
+import { DistributionChart, VolumeChart } from '../components/Charts';
+import { ErrorBanner, PageHeader } from '../components/Primitives';
 
-// Generate hourly executions for the last 24 hours
-const generateHourlyData = () => {
-  const data = [];
-  const now = new Date();
-  for (let i = 23; i >= 0; i--) {
-    const d = new Date(now.getTime() - i * 3600 * 1000);
-    const hourLabel = d.toLocaleTimeString([], { hour: "2-digit", hour12: false }) + ":00";
-    // Realistic curve with business hours peak
-    const hour = d.getHours();
-    const weight = (hour >= 9 && hour <= 18) ? 1.8 : 0.6;
-    const count = Math.max(2, Math.floor((12 + Math.random() * 16) * weight));
-    data.push({
-      time: hourLabel,
-      executions: count,
-    });
-  }
-  return data;
-};
+export default function OverviewPage({ onSelect }) {
+  const { executions, analytics, loading, refreshing, lastUpdated, error, refresh } = useData();
+  const { notify } = useUI();
+  const navigate = useNavigate();
+  const [range, setRange] = useState('24h');
+  const rangeDays = range === '24h' ? 1 : range === '7d' ? 7 : 30;
+  const filtered = useMemo(() => executions.filter((row) => new Date(row.timestamp).getTime() >= Date.now() - rangeDays * 86_400_000), [executions, rangeDays]);
 
-const hourlyData = generateHourlyData();
+  const metrics = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const week = new Date(today);
+    week.setDate(week.getDate() - ((week.getDay() + 6) % 7));
+    const todayCount = executions.filter((row) => new Date(row.timestamp) >= today).length;
+    const pendingCount = executions.filter((row) => row.status === 'pending_approval').length;
+    const completedWeekCount = executions.filter((row) => row.status === 'completed' && new Date(row.timestamp) >= week).length;
 
-export default function OverviewPage() {
-  const [executions, setExecutions] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [selectedExecution, setSelectedExecution] = useState(null);
-  const [drawerOpen, setDrawerOpen] = useState(false);
+    return {
+      today: todayCount || (analytics?.today ?? executions.length),
+      pending: pendingCount || (analytics?.pending ?? 0),
+      completedWeek: completedWeekCount || (analytics?.completedWeek ?? 0),
+      monthlyTokens: analytics?.monthlyTokens ?? 0,
+    };
+  }, [executions, analytics]);
 
-  const fetchExecutions = async () => {
-    try {
-      const data = await listAudits();
-      setExecutions(data);
-    } catch (err) {
-      console.error("Failed to load executions:", err);
-    } finally {
-      setLoading(false);
-    }
+  const chartData = useMemo(() => {
+    const sourceRows = filtered.length ? filtered : executions;
+    return range === '24h' ? hourlyExecutions(sourceRows) : dailyExecutions(sourceRows, rangeDays);
+  }, [executions, filtered, range, rangeDays]);
+
+  const distribution = useMemo(() => {
+    const sourceRows = filtered.length ? filtered : executions;
+    return [
+      { name: 'Completed', status: 'completed', color: '#10B981' },
+      { name: 'Pending', status: 'pending_approval', color: '#F59E0B' },
+      { name: 'Rejected', status: 'rejected', color: '#EF4444' },
+    ].map((item) => ({
+      ...item,
+      value: sourceRows.filter((row) => row.status === item.status).length,
+    }));
+  }, [executions, filtered]);
+
+  const total = chartData.reduce((sum, item) => sum + item.executions, 0);
+  const outcomeTotal = distribution.reduce((sum, item) => sum + item.value, 0);
+  const successRate = outcomeTotal ? `${(distribution[0].value / outcomeTotal * 100).toFixed(1)}%` : 'No data';
+  const exportReport = () => {
+    downloadCsv('agentflow-executions.csv', [['execution_id', 'timestamp', 'status', 'tenant_id'], ...filtered.map((row) => [row.execution_id, row.timestamp, row.status, row.tenant_id])]);
+    notify(`${filtered.length} execution records exported.`);
   };
-
-  useEffect(() => {
-    fetchExecutions();
-    const interval = setInterval(fetchExecutions, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Compute metrics from current telemetry
-  const totalToday = 248; // Total executions today
-  const pendingCount = executions.filter(
-    (e) => e.status === "pending_approval" || String(e.status).includes("pending")
-  ).length || 3;
-  const completedWeek = 1420;
-  const totalTokensMonth = "1.48M";
-
-  const completedCount = executions.filter((e) => e.status === "completed").length || 6;
-  const rejectedCount = executions.filter((e) => e.status === "rejected").length || 1;
-
-  const distributionData = [
-    { name: "Completed", count: 88, color: "#10B981" },
-    { name: "Pending", count: 8, color: "#F59E0B" },
-    { name: "Rejected", count: 4, color: "#EF4444" },
-  ];
-
-  const handleItemClick = async (item) => {
-    try {
-      const detail = await getAudit(item.execution_id);
-      setSelectedExecution(detail);
-    } catch {
-      setSelectedExecution(item);
-    }
-    setDrawerOpen(true);
-  };
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.3 }}
-      className="space-y-8"
-    >
-      {/* Header bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-slate-900 dark:text-white">
-            Enterprise Overview
-          </h1>
-          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400">
-            Real-time monitoring console for autonomous agent execution and compliance gates
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={fetchExecutions}
-          className="self-start sm:self-center flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white dark:bg-slate-900 border border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors shadow-xs"
-        >
-          <RefreshCw className={`w-3.5 h-3.5 ${loading ? "animate-spin" : ""}`} />
-          <span>Refresh Metrics</span>
-        </button>
-      </div>
-
-      {/* 4 Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <SummaryCard
-          title="Total Executions Today"
-          value={totalToday.toLocaleString()}
-          subtitle="Real-time agent invocations"
-          icon={Activity}
-          trend="+18.4%"
-          trendPositive={true}
-        />
-        <SummaryCard
-          title="Pending User Consents"
-          value={pendingCount.toString()}
-          subtitle="Awaiting client OTP / push response"
-          icon={AlertTriangle}
-          badge="Action on Widget"
-          badgeColor="amber"
-        />
-        <SummaryCard
-          title="Completed This Week"
-          value={completedWeek.toLocaleString()}
-          subtitle="99.2% autonomous success rate"
-          icon={CheckCircle2}
-          trend="+6.1%"
-          trendPositive={true}
-        />
-        <SummaryCard
-          title="Total Tokens Used (Month)"
-          value={totalTokensMonth}
-          subtitle="Within assigned tier threshold"
-          icon={Cpu}
-          trend="-2.4%"
-          trendPositive={true}
-        />
-      </div>
-
-      {/* Two Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* Line Chart: Executions per hour over the last 24 hours */}
-        <div className="lg:col-span-8 rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-6 shadow-sm space-y-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-                Executions Velocity (Last 24 Hours)
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Hourly throughput across client agent web components
-              </p>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-indigo-500 font-medium">
-              <TrendingUp className="w-3.5 h-3.5" />
-              <span>248 total</span>
-            </div>
-          </div>
-
-          <div className="h-64 w-full pt-4">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={hourlyData} margin={{ top: 5, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(148, 163, 184, 0.15)" />
-                <XAxis
-                  dataKey="time"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  tickLine={false}
-                  axisLine={{ stroke: "rgba(148, 163, 184, 0.2)" }}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  tickLine={false}
-                  axisLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "0.75rem",
-                    fontSize: "0.75rem",
-                    color: "#f8fafc",
-                  }}
-                  formatter={(val) => [`${val} executions`, "Hourly Volume"]}
-                />
-                <Line
-                  type="monotone"
-                  dataKey="executions"
-                  stroke="#6366F1"
-                  strokeWidth={2.5}
-                  dot={false}
-                  activeDot={{ r: 5, fill: "#8B5CF6" }}
-                />
-              </LineChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
-
-        {/* Small Bar Chart: Status Distribution */}
-        <div className="lg:col-span-4 rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-6 shadow-sm space-y-4">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-              Execution Distribution
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Completed vs Pending Approval vs Rejected
-            </p>
-          </div>
-
-          <div className="h-44 w-full pt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={distributionData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="rgba(148, 163, 184, 0.15)" />
-                <XAxis
-                  dataKey="name"
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <YAxis
-                  tick={{ fontSize: 10, fill: "#94a3b8" }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    border: "1px solid rgba(255,255,255,0.1)",
-                    borderRadius: "0.75rem",
-                    fontSize: "0.75rem",
-                    color: "#f8fafc",
-                  }}
-                  formatter={(val) => [`${val}%`, "Share"]}
-                />
-                <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                  {distributionData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.color} />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-
-          <div className="pt-3 border-t border-slate-200/80 dark:border-white/10 grid grid-cols-3 gap-2 text-center text-xs">
-            <div>
-              <span className="block font-bold text-emerald-500">88%</span>
-              <span className="text-[10px] text-slate-400">Completed</span>
-            </div>
-            <div>
-              <span className="block font-bold text-amber-500">8%</span>
-              <span className="text-[10px] text-slate-400">Pending</span>
-            </div>
-            <div>
-              <span className="block font-bold text-rose-500">4%</span>
-              <span className="text-[10px] text-slate-400">Rejected</span>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* Recent Activity Feed (Last 10 executions) */}
-      <div className="rounded-2xl border border-slate-200/80 dark:border-white/10 glass-panel p-6 shadow-sm space-y-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-sm sm:text-base font-bold text-slate-900 dark:text-white">
-              Recent Execution Activity
-            </h3>
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Last 10 agent events recorded across tenant channels
-            </p>
-          </div>
-          <span className="text-xs font-mono text-slate-400">Auto-refreshing</span>
-        </div>
-
-        <ActivityFeed executions={executions} onItemClick={handleItemClick} />
-      </div>
-
-      {/* Telemetry Detail Drawer */}
-      <ActivityDrawer
-        execution={selectedExecution}
-        isOpen={drawerOpen}
-        onClose={() => setDrawerOpen(false)}
-      />
-    </motion.div>
-  );
+  return <>
+    <PageHeader title="Overview" description="Your agents, at a glance. Everything is right here.">
+      <div className="select-button"><CalendarDays size={15} /><select aria-label="Dashboard time range" value={range} onChange={(event) => setRange(event.target.value)}><option value="24h">Last 24 hours</option><option value="7d">Last 7 days</option><option value="30d">Last 30 days</option></select><ChevronDown size={13} /></div>
+      <button className="button secondary" onClick={exportReport} disabled={loading || !filtered.length}><Download size={15} /><span>Export report</span></button>
+      <button className="icon-button bordered overview-refresh" onClick={refresh} disabled={refreshing} aria-label="Refresh overview" title={lastUpdated ? `Updated ${relativeTime(lastUpdated).toLowerCase()}. Click to refresh.` : 'Refresh overview'}><RefreshCw size={14} className={refreshing ? 'spin' : ''} /></button>
+    </PageHeader>
+    <ErrorBanner message={error} onRetry={refresh} />
+    <div className="summary-grid">
+      <SummaryCard title="Total executions today" value={number(metrics.today)} icon={Activity} note="Since midnight in your timezone" index={0} loading={loading} showSparkline={false} onClick={() => navigate('/activity')} />
+      <SummaryCard title="Pending user consents" value={number(metrics.pending)} icon={Hourglass} note="Awaiting customer approval" color="amber" index={1} loading={loading} showSparkline={false} onClick={() => navigate('/activity?status=pending_approval')} />
+      <SummaryCard title="Completed this week" value={number(metrics.completedWeek)} icon={CheckCheck} note="Completed since Monday" color="green" index={2} loading={loading} showSparkline={false} onClick={() => navigate('/audit?status=completed')} />
+      <SummaryCard title="Tokens used this month" value={metrics.monthlyTokens ? compact(metrics.monthlyTokens) : '0'} icon={Coins} note={analytics?.monthlyTokens ? 'of 10M monthly budget' : 'From RDS telemetry'} index={3} loading={loading} showSparkline={false} onClick={() => navigate('/usage')} />
+    </div>
+    <div className="overview-charts">
+      <section className="panel volume-panel"><div className="panel-header"><div><h2>Execution volume</h2><p>Agent executions over the last {rangeDays === 1 ? '24 hours' : `${rangeDays} days`}.</p></div><div className="segmented-control" aria-label="Execution chart range">{[['24h', '24h'], ['7d', '7d'], ['30d', '30d']].map(([value, label]) => <button key={value} className={range === value ? 'selected' : ''} aria-pressed={range === value} onClick={() => setRange(value)}>{label}</button>)}</div></div><VolumeChart data={chartData} height={189} label={`Agent executions over the last ${rangeDays === 1 ? '24 hours' : `${rangeDays} days`}`} /><div className="panel-chart-footer"><span>{number(total)} executions in this period</span><span className="chart-legend"><span className="tiny-dot purple" />All agents</span></div></section>
+      <section className="panel outcome-panel"><div className="panel-header"><div><h2>Execution outcomes</h2><p>Every status, in the selected period.</p></div><span className="help-icon" title="Completed, pending user approval, and rejected executions in the selected period." tabIndex={0}><CircleHelp size={16} /></span></div><DistributionChart data={distribution} height={185} /><div className="success-rate-row"><span><span className="tiny-dot green" />Completion rate</span><strong>{successRate}<span className="muted"> of executions</span></strong></div></section>
+    </div>
+    <ActivityFeed onSelect={onSelect} />
+  </>;
 }

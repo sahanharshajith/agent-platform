@@ -1,126 +1,20 @@
-import React from "react";
-import { NavLink } from "react-router-dom";
-import {
-  LayoutDashboard,
-  Activity,
-  ScrollText,
-  Cpu,
-  Settings as SettingsIcon,
-  Radio,
-} from "lucide-react";
+import { NavLink } from 'react-router-dom';
+import { ArrowUpRight, BookOpen, ChevronsUpDown, ShieldCheck } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
+import { navigation } from '../lib/navigation';
 
-export default function Sidebar({ isOpen, onClose }) {
-  const navItems = [
-    {
-      name: "Overview",
-      to: "/overview",
-      icon: LayoutDashboard,
-    },
-    {
-      name: "Live Agent Activity",
-      to: "/live-activity",
-      icon: Activity,
-      badge: "LIVE",
-    },
-    {
-      name: "Audit Trail",
-      to: "/audit",
-      icon: ScrollText,
-    },
-    {
-      name: "Token Usage",
-      to: "/usage",
-      icon: Cpu,
-    },
-    {
-      name: "Settings",
-      to: "/settings",
-      icon: SettingsIcon,
-    },
-  ];
-
-  return (
-    <>
-      {/* Mobile backdrop */}
-      {isOpen && (
-        <div
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
-          onClick={onClose}
-        />
-      )}
-
-      <aside
-        className={`fixed md:sticky top-16 z-30 h-[calc(100vh-4rem)] w-64 shrink-0 border-r border-slate-200/80 dark:border-white/10 glass-panel transition-transform duration-200 ease-in-out md:translate-x-0 ${
-          isOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
-        }`}
-      >
-        <div className="flex flex-col h-full justify-between p-4">
-          <div className="space-y-6">
-            <div className="px-3 pt-2">
-              <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">
-                Tenant Console
-              </span>
-            </div>
-
-            <nav className="space-y-1">
-              {navItems.map((item) => {
-                const Icon = item.icon;
-                return (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    onClick={() => {
-                      if (onClose) onClose();
-                    }}
-                    className={({ isActive }) =>
-                      `group relative flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-                        isActive
-                          ? "bg-gradient-to-r from-indigo-500/15 to-violet-500/10 text-indigo-600 dark:text-indigo-400 font-semibold shadow-sm shadow-indigo-500/5"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100/80 dark:hover:bg-slate-800/40"
-                      }`
-                    }
-                  >
-                    {({ isActive }) => (
-                      <>
-                        <Icon
-                          className={`w-4 h-4 transition-transform group-hover:scale-110 ${
-                            isActive
-                              ? "text-indigo-600 dark:text-indigo-400"
-                              : "text-slate-400 dark:text-slate-500 group-hover:text-slate-700 dark:group-hover:text-slate-300"
-                          }`}
-                        />
-                        <span className="flex-1 truncate">{item.name}</span>
-
-                        {item.badge && (
-                          <span className="flex items-center gap-1 text-[9px] font-bold tracking-wider px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-500 border border-emerald-500/30">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                            {item.badge}
-                          </span>
-                        )}
-
-                        {isActive && (
-                          <span className="absolute left-0 top-2 bottom-2 w-1 rounded-r-full bg-gradient-to-b from-indigo-600 to-violet-500" />
-                        )}
-                      </>
-                    )}
-                  </NavLink>
-                );
-              })}
-            </nav>
-          </div>
-
-          {/* Footer widget inside sidebar: Real-time sync badge */}
-          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-white/5 text-xs">
-            <div className="flex items-center gap-2 text-slate-700 dark:text-slate-300 font-medium">
-              <Radio className="w-3.5 h-3.5 text-indigo-500 animate-pulse" />
-              <span>Telemetry Feed</span>
-            </div>
-            <p className="mt-1 text-[11px] text-slate-500 dark:text-slate-400">
-              Read-only admin stream polling every 5s.
-            </p>
-          </div>
-        </div>
-      </aside>
-    </>
-  );
+export default function Sidebar({ onNavigate, onHelp, mobile = false }) {
+  const { session, isDemo } = useAuth();
+  const { health } = useData();
+  return <aside className={`sidebar ${mobile ? 'sidebar-mobile' : ''}`} aria-label="Workspace navigation">
+    <NavLink className="workspace-switch" to="/settings" onClick={onNavigate} aria-label="View workspace settings"><span className="workspace-avatar">{(session.tenant_name || 'Workspace')[0]}</span><span className="workspace-info"><strong>{session.tenant_name || 'Your workspace'}</strong><span>{isDemo ? 'Demo workspace' : 'Business workspace'}</span></span><ChevronsUpDown size={14} /></NavLink>
+    <div className="nav-section-label">WORKSPACE</div>
+    <nav className="sidebar-nav">{navigation.map(({ path, label, icon: Icon }) => <NavLink key={path} to={path} end={path === '/'} onClick={onNavigate} className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}><Icon size={18} strokeWidth={1.7} /><span>{label}</span>{path === '/activity' && <span className="nav-live-dot" />}</NavLink>)}</nav>
+    <div className="sidebar-bottom">
+      <div className="sidebar-note"><ShieldCheck size={19} strokeWidth={1.5} /><div><strong>A little oversight.<br />A lot of possibility.</strong><p>Your agents, working together.</p></div></div>
+      <button className="documentation-link" onClick={onHelp}><BookOpen size={16} /><span>Help & documentation</span><ArrowUpRight size={14} /></button>
+      <div className="sidebar-status"><div><span className={`status-dot ${isDemo ? 'purple' : health === 'ok' ? 'green' : 'amber'}`} /><span>{isDemo ? 'Demo environment' : health === 'ok' ? 'All systems operational' : health === 'checking' ? 'Checking connection' : 'API connection unavailable'}</span></div><span className="sidebar-version">{isDemo ? 'Sample data, real possibilities' : 'Tenant-isolated. Always.'}<span>v1.0</span></span></div>
+    </div>
+  </aside>;
 }

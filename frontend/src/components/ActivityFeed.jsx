@@ -1,81 +1,28 @@
-import React from "react";
-import { motion } from "framer-motion";
-import { ArrowUpRight, MessageSquare, Clock } from "lucide-react";
-import { Link } from "react-router-dom";
-import StatusBadge from "./StatusBadge";
+import { Link } from 'react-router-dom';
+import { motion } from 'framer-motion';
+import { ArrowRight, ChevronRight, GitBranch } from 'lucide-react';
+import { useData, useExecutionDetails } from '../context/DataContext';
+import { dateTime, executionMeta, relativeTime } from '../lib/format';
+import StatusBadge from './StatusBadge';
+import { EmptyState, SkeletonRows } from './Primitives';
 
-export default function ActivityFeed({ executions = [], onItemClick }) {
-  const recentItems = executions.slice(0, 10);
-
-  if (recentItems.length === 0) {
-    return (
-      <div className="py-12 text-center text-slate-500 dark:text-slate-400">
-        <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-40" />
-        <p className="text-sm">No recent execution events recorded.</p>
-      </div>
-    );
-  }
-
-  const formatTime = (ts) => {
-    try {
-      const d = new Date(ts);
-      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    } catch (e) {
-      return ts;
-    }
-  };
-
-  return (
-    <div className="divide-y divide-slate-100 dark:divide-white/5">
-      {recentItems.map((item, index) => {
-        const userMsg =
-          item.intent ||
-          item.user_message ||
-          item.message ||
-          "Customer requested autonomous agent action";
-
-        return (
-          <motion.div
-            key={item.execution_id || index}
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.25, delay: index * 0.04 }}
-            className="py-3.5 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:bg-slate-50/60 dark:hover:bg-slate-800/30 rounded-xl transition-colors group cursor-pointer"
-            onClick={() => onItemClick && onItemClick(item)}
-          >
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="mt-1 w-2 h-2 rounded-full bg-indigo-500/70 group-hover:bg-indigo-500 transition-colors shrink-0" />
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="font-mono text-xs font-semibold text-slate-900 dark:text-slate-200">
-                    {item.execution_id}
-                  </span>
-                  <StatusBadge status={item.status} />
-                </div>
-                <p className="mt-1 text-xs text-slate-600 dark:text-slate-300 truncate max-w-md sm:max-w-xl">
-                  {userMsg}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
-              <div className="flex items-center gap-1 text-[11px] text-slate-400 dark:text-slate-500">
-                <Clock className="w-3 h-3" />
-                <span>{formatTime(item.timestamp)}</span>
-              </div>
-
-              <Link
-                to={`/audit?id=${item.execution_id}`}
-                onClick={(e) => e.stopPropagation()}
-                className="p-1 rounded-md text-slate-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors"
-                title="View in Audit Trail"
-              >
-                <ArrowUpRight className="w-3.5 h-3.5" />
-              </Link>
-            </div>
-          </motion.div>
-        );
+export default function ActivityFeed({ onSelect }) {
+  const { executions, loading } = useData();
+  const rows = executions.slice(0, 10);
+  const details = useExecutionDetails(rows);
+  return <motion.section className="panel activity-panel" initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true, amount: 0.04 }} transition={{ duration: 0.25 }}>
+    <div className="panel-header"><div><h2>Recent activity</h2><p>A closer look at your agents in action.</p></div><Link className="text-button subtle-link" to="/activity">View all activity<ArrowRight size={14} /></Link></div>
+    <div className="table-scroll"><table className="data-table recent-table"><thead><tr><th>Execution ID</th><th>User message</th><th>Status</th><th className="time-column">Time</th><th><span className="sr-only">Details</span></th></tr></thead><tbody>
+      {loading ? <SkeletonRows count={5} columns={5} /> : rows.map((row, index) => {
+        const meta = executionMeta(details[row.execution_id]);
+        return <motion.tr key={row.execution_id} className="clickable-row" onClick={() => onSelect(row)} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2, delay: index * 0.025 }}>
+          <td><button className="execution-link" aria-label={`View execution ${row.execution_id}`}><span className="execution-icon"><GitBranch size={14} /></span><span className="mono">{row.execution_id}</span></button></td>
+          <td className="message-column"><span className={`truncate-message ${!meta.message ? 'muted' : ''}`} title={meta.message}>{meta.message || (details[row.execution_id] ? 'Message not reported' : 'Loading message...')}</span></td>
+          <td><StatusBadge status={row.status} /></td><td className="time-column muted" title={dateTime(row.timestamp)}>{relativeTime(row.timestamp)}</td><td><ChevronRight className="row-chevron" size={15} /></td>
+        </motion.tr>;
       })}
-    </div>
-  );
+    </tbody></table></div>
+    {!loading && !rows.length && <EmptyState />}
+    {!!rows.length && <div className="table-footer"><span>Showing the {rows.length} most recent executions</span><span><span className="tiny-dot purple" />Every interaction. Full visibility.</span></div>}
+  </motion.section>;
 }
