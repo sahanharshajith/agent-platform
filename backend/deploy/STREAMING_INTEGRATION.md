@@ -1,5 +1,8 @@
 # Connect StreamSphere to Agent Platform
 
+For the configured Vercel, API Gateway, EC2, and RDS deployments, use the
+[production environment files and deployment steps](production/README.md).
+
 Agent Platform implements the JSON contract used by the existing
 `D:/streaming/streaming-service/server/agent.mjs` adapter. The streaming frontend
 continues to call its own backend. Agent Platform owns model calls, conversation

@@ -1,12 +1,32 @@
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { getAnalytics, getAudit, getAuditDetail, getHealth, getUsage, requestError } from '../api/client';
+import { getAnalytics, getAudit, getAuditDetail, getHealth, getMonitoringTenants, requestError } from '../api/client';
 import { useAuth } from './AuthContext';
+import { ErrorBanner, LoadingState } from '../components/Primitives';
 
 const DataContext = createContext(null);
 
 export function DataProvider({ children }) {
   const { session } = useAuth();
+  const [tenants, setTenants] = useState([]);
+  const [tenantId, setTenantId] = useState('');
+  const [error, setError] = useState('');
+  const [retry, setRetry] = useState(0);
+  useEffect(() => {
+    const controller = new AbortController();
+    setError('');
+    getMonitoringTenants({ signal: controller.signal }).then((data) => {
+      if (controller.signal.aborted) return;
+      setTenants(data.tenants);
+      setTenantId(data.default_tenant_id);
+    }).catch((failure) => { if (!controller.signal.aborted) setError(requestError(failure)); });
+    return () => controller.abort();
+  }, [session.tenant_id, retry]);
+  if (!tenantId) return <main className="dashboard-main"><ErrorBanner message={error} onRetry={() => setRetry((value) => value + 1)} />{!error && <LoadingState label="Loading authorized monitoring workspaces..." />}</main>;
+  return <WorkspaceDataProvider key={tenantId} tenantId={tenantId} tenants={tenants} setTenantId={setTenantId}>{children}</WorkspaceDataProvider>;
+}
+
+function WorkspaceDataProvider({ children, tenantId, tenants, setTenantId }) {
   const location = useLocation();
   const [executions, setExecutions] = useState([]);
   const [details, setDetails] = useState({});
@@ -40,17 +60,13 @@ export function DataProvider({ children }) {
     setRefreshing(true);
     controllers.current.add(controller);
     try {
-      const [rows, stats, usageData] = await Promise.all([
-        getAudit({ signal: controller.signal }),
-        getAnalytics({ signal: controller.signal }),
-        getUsage({ signal: controller.signal }),
+      const [rows, stats] = await Promise.all([
+        getAudit({ signal: controller.signal, tenantId }),
+        getAnalytics({ signal: controller.signal, tenantId }),
       ]);
       if (!alive.current || controller.signal.aborted) return;
-      const tenant = session?.tenant_id || 'boc-tenant-01';
-      setExecutions(rows.filter((row) => !row.tenant_id || row.tenant_id === tenant).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
-      if (stats || usageData) {
-        setAnalytics({ ...(stats || {}), ...(usageData || {}) });
-      }
+      setExecutions(rows.filter((row) => row.tenant_id === tenantId).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)));
+      setAnalytics(stats);
       setLastUpdated(Date.now());
       setError('');
     } catch (failure) {
@@ -62,7 +78,7 @@ export function DataProvider({ children }) {
         if (alive.current && !controller.signal.aborted) { setLoading(false); setRefreshing(false); }
       }
     }
-  }, [session?.tenant_id]);
+  }, [tenantId]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -80,7 +96,7 @@ export function DataProvider({ children }) {
   }, []);
 
   useEffect(() => {
-    if (!['/activity', '/audit'].includes(location.pathname) || (paused && location.pathname === '/activity')) return;
+    if (location.pathname === '/settings' || (paused && location.pathname === '/activity')) return;
     const tick = () => { if (!document.hidden) refresh(); };
     const interval = setInterval(tick, 5000);
     document.addEventListener('visibilitychange', tick);
@@ -94,7 +110,7 @@ export function DataProvider({ children }) {
     if (requests.current.has(id)) return requests.current.get(id);
     const controller = new AbortController();
     controllers.current.add(controller);
-    const request = getAuditDetail(id, { signal: controller.signal }).then((data) => {
+    const request = getAuditDetail(id, { signal: controller.signal, tenantId }).then((data) => {
       if (alive.current && !controller.signal.aborted) {
         cache.current.set(id, { data, updated: Date.now() });
         setDetails((current) => ({ ...current, [id]: data }));
@@ -106,9 +122,9 @@ export function DataProvider({ children }) {
     });
     requests.current.set(id, request);
     return request;
-  }, []);
+  }, [tenantId]);
 
-  return <DataContext.Provider value={{ executions, details, loading, refreshing, error, health, lastUpdated, paused, setPaused, refresh, loadDetail, analytics }}>{children}</DataContext.Provider>;
+  return <DataContext.Provider value={{ executions, details, loading, refreshing, error, health, lastUpdated, paused, setPaused, refresh, loadDetail, analytics, tenantId, tenants, setTenantId }}>{children}</DataContext.Provider>;
 }
 
 export const useData = () => useContext(DataContext);

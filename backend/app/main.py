@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import router
+from app.api.monitoring import router as monitoring_router
 from app.audit import init_db
 
 app = FastAPI(title="Agent Platform", version="0.1.0")
@@ -19,4 +20,5 @@ def _startup():
     init_db()
 
 app.include_router(router)
+app.include_router(monitoring_router)
 
