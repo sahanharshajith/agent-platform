@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Building2, Check, ChevronDown, ChevronRight, Copy, LogOut, Menu, Moon, Search, Settings2, ShieldCheck, Sun, UserRound } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { useData } from '../context/DataContext';
 import { useUI } from '../context/UIContext';
 import { navigation } from '../lib/navigation';
 import { copyText } from '../lib/format';
 import Logo from './Logo';
 
 export default function Navbar({ onMenu, onSearch }) {
-  const { session, logout, isDemo } = useAuth();
+  const { session, logout } = useAuth();
+  const { tenantId, tenants, setTenantId } = useData();
   const { theme, setTheme, notify } = useUI();
   const { pathname } = useLocation();
   const navigate = useNavigate();
@@ -32,7 +34,7 @@ export default function Navbar({ onMenu, onSearch }) {
   }, []);
   useEffect(() => { setPopover(null); }, [pathname]);
   const copyTenant = async () => {
-    try { await copyText(session.tenant_id); setCopied(true); notify('Tenant ID copied to clipboard.'); }
+    try { await copyText(tenantId); setCopied(true); notify('Tenant ID copied to clipboard.'); }
     catch (error) { notify(error.message, 'error'); }
   };
   return <header className="navbar">
@@ -42,8 +44,8 @@ export default function Navbar({ onMenu, onSearch }) {
       <div className="navbar-actions" ref={menuRef}>
         <button className="nav-search icon-button" onClick={onSearch} aria-label="Search workspace (Control K)" title="Search workspace (Ctrl K)"><Search size={18} /></button>
         <div className="popover-wrap tenant-wrap">
-          <button className="tenant-switch" onClick={() => { setPopover(popover === 'tenant' ? null : 'tenant'); setCopied(false); }} aria-expanded={popover === 'tenant'} aria-label="View current tenant"><Building2 size={14} /><span>{session.tenant_id}</span><ChevronDown size={13} /></button>
-          {popover === 'tenant' && <div className="popover tenant-popover"><div className="popover-label">CURRENT WORKSPACE</div><strong>{session.tenant_name || session.tenant_id}</strong><span className="muted mono">{session.tenant_id}</span><p>{isDemo ? 'Demo workspace with illustrative data.' : 'Your session is securely scoped to this tenant.'}</p><button className="menu-item" onClick={copyTenant}>{copied ? <Check size={15} /> : <Copy size={15} />}Copy tenant ID</button></div>}
+          <button className="tenant-switch" onClick={() => { setPopover(popover === 'tenant' ? null : 'tenant'); setCopied(false); }} aria-expanded={popover === 'tenant'} aria-label="Select monitoring workspace"><Building2 size={14} /><span>{tenantId}</span><ChevronDown size={13} /></button>
+          {popover === 'tenant' && <div className="popover tenant-popover"><div className="popover-label">MONITORING WORKSPACE</div>{tenants.map((tenant) => <button className="menu-item" key={tenant.tenant_id} onClick={() => { navigate(pathname); setTenantId(tenant.tenant_id); setPopover(null); }}><Building2 size={15} /><span>{tenant.name}<small className="muted"> {tenant.tenant_id}</small></span>{tenantId === tenant.tenant_id && <Check size={15} />}</button>)}<p>Read-only access granted to your administrator workspace. Settings remain scoped to {session.tenant_id}.</p><button className="menu-item" onClick={copyTenant}>{copied ? <Check size={15} /> : <Copy size={15} />}Copy monitored tenant ID</button></div>}
         </div>
         <span className="navbar-divider" />
         <button className="icon-button theme-toggle" onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`} title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}>{theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}</button>

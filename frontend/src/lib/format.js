@@ -1,3 +1,5 @@
+import { eventDetails } from './audit.js';
+
 export const number = (value) => new Intl.NumberFormat('en-US').format(value);
 export const compact = (value) => new Intl.NumberFormat('en-US', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
 export const time = (value) => new Date(value).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
@@ -30,14 +32,15 @@ export function asText(value) {
 export function executionMeta(detail) {
   const result = { message: '', userId: '', intent: '', model: '', tokens: null, rag: [], reasoning: '', tools: [], policy: null, response: '' };
   for (const event of detail?.events || []) {
-    const data = asObject(event.details);
+    const data = asObject(eventDetails(event));
     result.userId = asText(data.user_id) || result.userId;
-    result.intent = asText(data.intent) || result.intent;
+    result.intent = asText(data.intent || (event.event_type === 'plan' ? data.action : '')) || result.intent;
     result.model = asText(data.model) || result.model;
     result.reasoning = asText(data.reasoning_summary || data.model_reasoning_summary) || result.reasoning;
-    if (Array.isArray(data.rag_chunks)) result.rag = data.rag_chunks.filter((chunk) => chunk != null).map((chunk, index) => ({ source: asText(chunk.source || chunk.document_id) || `Source ${index + 1}`, content: typeof chunk === 'string' ? chunk : asText(chunk.content || chunk.text || chunk), score: chunk.score }));
+    const chunks = data.rag_chunks || (event.event_type === 'rag' ? data.chunks : null);
+    if (Array.isArray(chunks)) result.rag = chunks.filter((chunk) => chunk != null).map((chunk, index) => ({ source: asText(chunk.source || chunk.document_id) || `Source ${index + 1}`, content: typeof chunk === 'string' ? chunk : asText(chunk.content || chunk.text || chunk), score: chunk.score }));
     const usage = data.usage || data.token_usage;
-    const tokens = typeof data.tokens === 'number' ? data.tokens : usage?.total_tokens ?? (typeof usage?.input_tokens === 'number' && typeof usage?.output_tokens === 'number' ? usage.input_tokens + usage.output_tokens : null);
+    const tokens = typeof data.tokens === 'number' ? data.tokens : data.tokens_used ?? usage?.total_tokens ?? (typeof usage?.input_tokens === 'number' && typeof usage?.output_tokens === 'number' ? usage.input_tokens + usage.output_tokens : null);
     if (Number.isFinite(tokens) && tokens >= 0) result.tokens = tokens;
     if (event.event_type === 'user_message') result.message = asText(data.message || data.content || data.user_message || data.text);
     if (event.event_type === 'tool_call') result.tools.push({ ...data, tool: asText(data.tool || data.name) });

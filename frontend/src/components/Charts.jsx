@@ -34,7 +34,7 @@ export function DistributionChart({ data, dataKey = 'value', height = 188, horiz
         <XAxis type={horizontal ? 'number' : 'category'} dataKey={horizontal ? undefined : 'name'} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted)', fontSize: 10 }} tickFormatter={horizontal ? compact : undefined} tickMargin={10} height={32} />
         <YAxis type={horizontal ? 'category' : 'number'} dataKey={horizontal ? 'name' : undefined} axisLine={false} tickLine={false} tick={{ fill: 'var(--muted)', fontSize: 10 }} width={horizontal ? 104 : 41} tickFormatter={horizontal ? undefined : compact} tickCount={4} allowDecimals={false} />
         <Tooltip content={<ChartTooltip />} cursor={{ fill: 'var(--hover)' }} />
-        <Bar dataKey={dataKey} radius={horizontal ? [0, 5, 5, 0] : [5, 5, 0, 0]} minPointSize={5} isAnimationActive={!reducedMotion} animationDuration={300} label={horizontal ? undefined : { position: 'top', fill: 'var(--text-secondary)', fontSize: 10, formatter: compact }}>
+        <Bar dataKey={dataKey} radius={horizontal ? [0, 5, 5, 0] : [5, 5, 0, 0]} isAnimationActive={!reducedMotion} animationDuration={300} label={horizontal ? undefined : { position: 'top', fill: 'var(--text-secondary)', fontSize: 10, formatter: compact }}>
           {data.map((item) => <Cell key={item.name} fill={item.color} fillOpacity={0.8} />)}
         </Bar>
       </BarChart>

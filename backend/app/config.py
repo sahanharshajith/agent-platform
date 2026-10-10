@@ -62,5 +62,9 @@ class Settings:
     STREAMING_TOOL_API_KEY: str = os.getenv("STREAMING_TOOL_API_KEY", "")
     STREAMING_TOOL_TIMEOUT: float = float(os.getenv("STREAMING_TOOL_TIMEOUT", "15"))
 
+    # Read-only console grants: authenticated admin tenant -> monitored tenant IDs.
+    # Empty by default; this does not change chat credentials or tenant identity.
+    MONITORING_TENANT_ACCESS: str = os.getenv("MONITORING_TENANT_ACCESS", "{}")
+
 
 settings = Settings()

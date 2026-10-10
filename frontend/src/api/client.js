@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { configuration, expireSession, isLocalSession, readSession } from '../lib/session';
+import { normalizeDetail, normalizeExecution } from '../lib/audit';
 
 const API_BASE = configuration.apiUrl || 'http://localhost:8000';
 
@@ -47,39 +48,29 @@ export async function getHealth(options = {}) {
 }
 
 export async function getAudit(options = {}) {
-  const { data } = await client.get('/audit', { signal: options.signal });
+  const { data } = await client.get('/admin/monitoring/executions', { signal: options.signal, params: { tenant_id: options.tenantId, limit: 200 } });
   const list = Array.isArray(data)
     ? data
     : Array.isArray(data?.executions)
     ? data.executions
     : [];
 
-  return list.map((row) => ({
-    ...row,
-    execution_id: String(row.execution_id),
-    tenant_id: String(row.tenant_id || 'boc-tenant-01'),
-    status: ['completed', 'pending_approval', 'rejected'].includes(row.status)
-      ? row.status
-      : 'completed',
-    timestamp: row.timestamp || row.created_at || new Date().toISOString(),
-  }));
+  return list.map(normalizeExecution);
 }
 
 export async function getAuditDetail(executionId, options = {}) {
-  const { data } = await client.get(`/audit/${encodeURIComponent(executionId)}`, { signal: options.signal });
-  return data;
+  const { data } = await client.get(`/admin/monitoring/executions/${encodeURIComponent(executionId)}`, { signal: options.signal, params: { tenant_id: options.tenantId } });
+  return normalizeDetail(data);
 }
 
 export async function getAnalytics(options = {}) {
-  try {
-    const { data } = await client.get('/admin/analytics', { signal: options.signal });
-    if (data && typeof data === 'object') {
-      return data;
-    }
-  } catch (err) {
-    console.error('Failed to fetch analytics from backend:', err);
-  }
-  return null;
+  const { data } = await client.get('/admin/monitoring/overview', { signal: options.signal, params: { tenant_id: options.tenantId } });
+  return data;
+}
+
+export async function getMonitoringTenants(options = {}) {
+  const { data } = await client.get('/admin/monitoring/tenants', { signal: options.signal });
+  return data;
 }
 
 export async function getUsage(options = {}) {
